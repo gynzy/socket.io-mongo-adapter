@@ -1,3 +1,7 @@
+# Gynzy Notes
+Reason for fork: we needed an index hint to avoid a full collection scan.
+Deploy: create PR with increased gynzy patch version. specified version will be released on merge
+
 # Socket.IO MongoDB adapter
 
 The `@socket.io/mongo-adapter` package allows broadcasting packets between multiple Socket.IO servers.

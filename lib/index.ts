@@ -828,49 +828,51 @@ export class MongoAdapter extends Adapter {
     const session = results[0].value.data;
 
     // could use a sparse index on [_id, nsp, data.opts.rooms, data.opts.except] (only index the documents whose type is EventType.BROADCAST)
-    const cursor = this.mongoCollection.find({
-      $and: [
-        {
-          type: EventType.BROADCAST,
-        },
-        {
-          _id: {
-            $gt: eventOffset,
+    const cursor = this.mongoCollection
+      .find({
+        $and: [
+          {
+            type: EventType.BROADCAST,
           },
-        },
-        {
-          nsp: this.nsp.name,
-        },
-        {
-          $or: [
-            {
-              "data.opts.rooms": {
-                $size: 0,
-              },
+          {
+            _id: {
+              $gt: eventOffset,
             },
-            {
-              "data.opts.rooms": {
-                $in: session.rooms,
+          },
+          {
+            nsp: this.nsp.name,
+          },
+          {
+            $or: [
+              {
+                "data.opts.rooms": {
+                  $size: 0,
+                },
               },
-            },
-          ],
-        },
-        {
-          $or: [
-            {
-              "data.opts.except": {
-                $size: 0,
+              {
+                "data.opts.rooms": {
+                  $in: session.rooms,
+                },
               },
-            },
-            {
-              "data.opts.except": {
-                $nin: session.rooms,
+            ],
+          },
+          {
+            $or: [
+              {
+                "data.opts.except": {
+                  $size: 0,
+                },
               },
-            },
-          ],
-        },
-      ],
-    });
+              {
+                "data.opts.except": {
+                  $nin: session.rooms,
+                },
+              },
+            ],
+          },
+        ],
+      })
+      .hint({ _id: 1, nsp: 1, "data.opts.rooms": 1 });
 
     session.missedPackets = [];
 
