@@ -1,6 +1,6 @@
 {
   "name": "@socket.io/mongo-adapter",
-  "version": "0.3.0",
+  "version": "0.3.0-gynzy1",
   "description": "The Socket.IO MongoDB adapter, allowing to broadcast events between several Socket.IO servers",
   "license": "MIT",
   "repository": {
@@ -16,7 +16,7 @@
     "test": "npm run format:check && tsc && nyc mocha --require ts-node/register test/index.ts",
     "format:check": "prettier --parser typescript --check 'lib/**/*.ts' 'test/**/*.ts'",
     "format:fix": "prettier --parser typescript --write 'lib/**/*.ts' 'test/**/*.ts'",
-    "prepack": "tsc"
+    "build": "tsc"
   },
   "dependencies": {
     "debug": "~4.3.1",
