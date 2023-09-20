@@ -24,6 +24,10 @@ describe("@socket.io/mongodb-adapter", () => {
     await mongoClient.connect();
 
     const collection = mongoClient.db("test").collection("events");
+    await collection.createIndex(
+      { _id: 1, nsp: 1, "data.opts.rooms": 1 },
+      { partialFilterExpression: { type: 3 }, background: true }
+    );
 
     return new Promise((resolve) => {
       for (let i = 1; i <= NODES_COUNT; i++) {
