@@ -94,7 +94,7 @@ describe("connection state recovery", () => {
       socket.on("disconnect", () => {
         // let's send some packets while the client is disconnected
         socket.emit("myEvent", 1);
-        servers[0].emit("myEvent", 2);
+        servers[0].to("room1").emit("myEvent", 2);
         servers[0].to("room1").emit("myEvent", 3);
 
         // those packets should not be received by the client upon reconnection (room mismatch)
