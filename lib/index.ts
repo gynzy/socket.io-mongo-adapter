@@ -828,51 +828,36 @@ export class MongoAdapter extends Adapter {
     const session = results[0].value.data;
 
     // could use a sparse index on [_id, nsp, data.opts.rooms, data.opts.except] (only index the documents whose type is EventType.BROADCAST)
-    const cursor = this.mongoCollection
-      .find({
-        $and: [
-          {
-            type: EventType.BROADCAST,
+    /* addition daniel genis 20231026
+      one cannot create an index over two array fields (data.opts.rooms, data.opts.except).
+      in addition the previous query contained data.opts.rooms.size = 0 OR clause which is unindexable.
+      probably the best index is to simply index on rooms only, it's the most selective (for our usecase)
+     */
+    const cursor = this.mongoCollection.find({
+      $and: [
+        {
+          type: EventType.BROADCAST,
+        },
+        {
+          _id: {
+            $gt: eventOffset,
           },
-          {
-            _id: {
-              $gt: eventOffset,
-            },
+        },
+        {
+          nsp: this.nsp.name,
+        },
+        {
+          "data.opts.rooms": {
+            $in: session.rooms,
           },
-          {
-            nsp: this.nsp.name,
+        },
+        {
+          "data.opts.except": {
+            $nin: session.rooms,
           },
-          {
-            $or: [
-              {
-                "data.opts.rooms": {
-                  $size: 0,
-                },
-              },
-              {
-                "data.opts.rooms": {
-                  $in: session.rooms,
-                },
-              },
-            ],
-          },
-          {
-            $or: [
-              {
-                "data.opts.except": {
-                  $size: 0,
-                },
-              },
-              {
-                "data.opts.except": {
-                  $nin: session.rooms,
-                },
-              },
-            ],
-          },
-        ],
-      })
-      .hint({ _id: 1, nsp: 1, "data.opts.rooms": 1 });
+        },
+      ],
+    });
 
     session.missedPackets = [];
 
