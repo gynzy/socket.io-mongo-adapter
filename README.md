@@ -1,5 +1,6 @@
 # Gynzy Notes
-Reason for fork: we needed an index hint to avoid a full collection scan.
+Reason for fork: updated the connection recovery query to exclude broadcasts without a room specified.
+this was not indexable and caused the query to be inefficient
 Deploy: create PR with increased gynzy patch version. specified version will be released on merge
 
 # Socket.IO MongoDB adapter
