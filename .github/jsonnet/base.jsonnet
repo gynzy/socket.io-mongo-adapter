@@ -23,6 +23,7 @@
     services=null,
     permissions=null,
     concurrency=null,
+    continueOnError=null,
   )::
     {
       [name]: {
@@ -45,7 +46,8 @@
               (if outputs != null then { outputs: outputs } else {}) +
               (if services != null then { services: services } else {}) +
               (if permissions == null then {} else { permissions: permissions }) +
-              (if concurrency == null then {} else { concurrency: concurrency }),
+              (if concurrency == null then {} else { concurrency: concurrency }) +
+              (if continueOnError == null then {} else { 'continue-on-error': continueOnError }),
     },
 
   ghExternalJob(
@@ -61,7 +63,7 @@
            } else {}),
     },
 
-  step(name, run, env=null, workingDirectory=null, ifClause=null, id=null)::
+  step(name, run, env=null, workingDirectory=null, ifClause=null, id=null, continueOnError=null)::
     [
       {
         name: name,
@@ -69,10 +71,11 @@
       } + (if workingDirectory != null then { 'working-directory': workingDirectory } else {})
       + (if env != null then { env: env } else {})
       + (if ifClause != null then { 'if': ifClause } else {})
-      + (if id != null then { id: id } else {}),
+      + (if id != null then { id: id } else {})
+      + (if continueOnError == null then {} else { 'continue-on-error': continueOnError }),
     ],
 
-  action(name, uses, env=null, with=null, id=null, ifClause=null)::
+  action(name, uses, env=null, with=null, id=null, ifClause=null, continueOnError=null)::
     [
       {
         name: name,
@@ -80,6 +83,7 @@
       } + (if env != null then { env: env } else {})
       + (if with != null && with != {} then { with: with } else {})
       + (if id != null then { id: id } else {})
-      + (if ifClause != null then { 'if': ifClause } else {}),
+      + (if ifClause != null then { 'if': ifClause } else {})
+      + (if continueOnError == null then {} else { 'continue-on-error': continueOnError }),
     ],
 }

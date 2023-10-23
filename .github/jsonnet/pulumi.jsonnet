@@ -142,9 +142,6 @@
       [
         $.pulumiPreviewTestAndProdJob(pulumiDir=pulumiDir, yarnDir=yarnDir, cacheName=cacheName),
       ],
-      concurrency={
-        group: 'pulumi',
-      }
     ) +
     $.pipeline(
       'pulumi-deploy',
@@ -153,8 +150,5 @@
         $.pulumiDeployProdJob(pulumiDir=pulumiDir, yarnDir=yarnDir, cacheName=cacheName),
       ],
       event='deployment',
-      concurrency={
-        group: 'pulumi',
-      }
     ),
 }

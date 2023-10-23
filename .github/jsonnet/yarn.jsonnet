@@ -135,7 +135,7 @@
     env={ SERVICE_JSON: secret },
   ),
 
-  yarnPublish(isPr=true)::
+  yarnPublish(isPr=true, ifClause=null)::
     $.step(
       'publish',
       |||
@@ -169,13 +169,14 @@
         mv package.json.bak package.json;
         ';
       |||,
-      env={} + (if isPr then { PR_NUMBER: '${{ github.event.number }}' } else {})
+      env={} + (if isPr then { PR_NUMBER: '${{ github.event.number }}' } else {}),
+      ifClause=ifClause,
     ),
 
-  yarnPublishToRepositories(isPr, repositories)::
+  yarnPublishToRepositories(isPr, repositories, ifClause=null)::
     (std.flatMap(function(repository)
-                   if repository == 'gynzy' then [$.setGynzyNpmToken(), $.yarnPublish(isPr=isPr)]
-                   else if repository == 'github' then [$.setGithubNpmToken(), $.yarnPublish(isPr=isPr)]
+                   if repository == 'gynzy' then [$.setGynzyNpmToken(ifClause=ifClause), $.yarnPublish(isPr=isPr, ifClause=ifClause)]
+                   else if repository == 'github' then [$.setGithubNpmToken(ifClause=ifClause), $.yarnPublish(isPr=isPr, ifClause=ifClause)]
                    else error 'Unknown repository type given.',
                  repositories)),
 
@@ -187,21 +188,29 @@
     buildSteps=[$.step('build', 'yarn build')],
     checkVersionBump=true,
     repositories=['gynzy'],
+    onChangedFiles=false,
+    changedFilesHeadRef=null,
+    changedFilesBaseRef=null,
     runsOn=null,
-  ): $.ghJob(
-    'yarn-publish-preview',
-    image='node:18',
-    useCredentials=false,
-    runsOn=runsOn,
-    steps=
-    [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
-    (if checkVersionBump then [$.action('check-version-bump', uses='del-systems/check-if-version-bumped@v1', with={
-       token: '${{ github.token }}',
-     })] else []) +
-    buildSteps +
-    $.yarnPublishToRepositories(isPr=true, repositories=repositories),
-    permissions={ packages: 'write', contents: 'read' },
-  ),
+  ):
+    local ifClause = (if onChangedFiles != false then "steps.changes.outputs.package == 'true'" else null);
+    $.ghJob(
+      'yarn-publish-preview',
+      image='node:18',
+      runsOn=runsOn,
+      useCredentials=false,
+      steps=
+      [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
+      (if onChangedFiles != false then $.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
+      (if checkVersionBump then [
+         $.action('check-version-bump', uses='del-systems/check-if-version-bumped@v1', with={
+           token: '${{ github.token }}',
+         }, ifClause=ifClause),
+       ] else []) +
+      (if onChangedFiles != false then std.map(function(step) std.map(function(s) s { 'if': ifClause }, step), buildSteps) else buildSteps) +
+      $.yarnPublishToRepositories(isPr=true, repositories=repositories, ifClause=ifClause),
+      permissions={ packages: 'write', contents: 'read', 'pull-requests': 'read' },
+    ),
 
   yarnPublishJob(
     image='node:18',
@@ -209,16 +218,24 @@
     gitCloneRef='${{ github.sha }}',
     buildSteps=[$.step('build', 'yarn build')],
     repositories=['gynzy'],
+    onChangedFiles=false,
+    changedFilesHeadRef=null,
+    changedFilesBaseRef=null,
+    ifClause=null,
     runsOn=null,
-  ): $.ghJob(
-    'yarn-publish',
-    image='node:18',
-    useCredentials=false,
-    runsOn=runsOn,
-    steps=
-    [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
-    buildSteps +
-    $.yarnPublishToRepositories(isPr=false, repositories=repositories),
-    permissions={ packages: 'write', contents: 'read' },
-  ),
+  ):
+    local stepIfClause = (if onChangedFiles != false then "steps.changes.outputs.package == 'true'" else null);
+    $.ghJob(
+      'yarn-publish',
+      image='node:18',
+      runsOn=null,
+      useCredentials=false,
+      steps=
+      [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
+      (if onChangedFiles != false then $.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
+      (if onChangedFiles != false then std.map(function(step) std.map(function(s) s { 'if': stepIfClause }, step), buildSteps) else buildSteps) +
+      $.yarnPublishToRepositories(isPr=false, repositories=repositories, ifClause=stepIfClause),
+      permissions={ packages: 'write', contents: 'read', 'pull-requests': 'read' },
+      ifClause=ifClause,
+    ),
 }

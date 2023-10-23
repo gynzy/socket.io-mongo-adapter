@@ -5,7 +5,10 @@
     "permissions":
       "contents": "read"
       "packages": "write"
-    "runs-on": "ubuntu-latest"
+      "pull-requests": "read"
+    "runs-on":
+    - "self-hosted"
+    - "runner-2"
     "steps":
     - "name": "Check out repository code"
       "uses": "actions/checkout@v3"

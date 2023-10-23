@@ -13,5 +13,12 @@
       zone: 'europe-west4',
       secret: '${{ secrets.GCE_JSON }}',
     },
+
+    'gynzy-intern': {
+      project: 'gynzy-intern',
+      name: 'gynzy-intern',
+      zone: 'europe-west4',
+      secret: '${{ secrets.CONTINUOUS_DEPLOYMENT_GCE_JSON }}',
+    },
   },
 }

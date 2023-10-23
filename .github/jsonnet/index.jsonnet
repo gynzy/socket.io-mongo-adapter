@@ -14,5 +14,4 @@
 (import 'yarn.jsonnet') +
 (import 'deployment.jsonnet') +
 (import 'notifications.jsonnet') +
-(import 'python.jsonnet') +
 {}
