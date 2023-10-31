@@ -1,5 +1,5 @@
 {
-  deployHelm(cluster, release, values, chartPath, delete=false, useHelm3=true, title=null, ifClause=null, ttl=null)::
+  deployHelm(cluster, release, values, chartPath, delete=false, useHelm3=true, title=null, ifClause=null, ttl=null, namespace='default')::
     $.action(
       (if title == null then if delete then 'delete-helm' else 'deploy-helm' else title),
       $.helm_action_image,
@@ -9,7 +9,7 @@
              clusterName: cluster.name,
              clusterSaJson: cluster.secret,
              release: release,
-             namespace: 'default',
+             namespace: namespace,
              chart: chartPath,
              atomic: 'false',
              token: '${{ github.token }}',
@@ -27,9 +27,11 @@
     helmPath='./helm/' + serviceName,
     deploymentName=serviceName + '-prod',
     ifClause=null,
+    cluster=$.clusters.prod,
+    namespace='default',
   )::
     $.deployHelm(
-      $.clusters.prod,
+      cluster,
       deploymentName,
       {
         environment: 'prod',
@@ -42,6 +44,7 @@
       useHelm3=true,
       title='deploy-prod',
       ifClause=ifClause,
+      namespace=namespace,
     ),
 
   helmDeployProdJob(
@@ -68,9 +71,11 @@
     options={},
     helmPath='./helm/' + serviceName,
     deploymentName=serviceName + '-master',
+    cluster=$.clusters.test,
+    namespace='default',
   )::
     $.deployHelm(
-      $.clusters.test,
+      cluster,
       deploymentName,
       {
         environment: 'test',
@@ -82,6 +87,7 @@
       helmPath,
       useHelm3=true,
       title='deploy-test',
+      namespace=namespace,
     ),
 
   helmDeployTestJob(
@@ -108,9 +114,11 @@
     options={},
     helmPath='./helm/' + serviceName,
     deploymentName=serviceName + '-pr-${{ github.event.number }}',
+    cluster=$.clusters.test,
+    namespace='default',
   )::
     $.deployHelm(
-      $.clusters.test,
+      cluster,
       deploymentName,
       {
         environment: 'pr',
@@ -123,6 +131,7 @@
       useHelm3=true,
       title='deploy-pr',
       ttl='7 days',
+      namespace=namespace,
     ),
   helmDeployPRJob(
     serviceName,
@@ -147,15 +156,18 @@
     options={},
     helmPath='./helm/' + serviceName,
     deploymentName=serviceName + '-pr-${{ github.event.number }}',
+    cluster=$.clusters.test,
+    namespace='default',
   )::
     $.deployHelm(
-      $.clusters.test,
+      cluster,
       deploymentName,
       options,
       helmPath,
       useHelm3=true,
       delete=true,
       title='delete-pr',
+      namespace=namespace,
     ),
   helmDeletePRJob(
     serviceName,

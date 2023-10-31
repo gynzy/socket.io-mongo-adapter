@@ -24,6 +24,7 @@
   verifyJsonnet(fetch_upstream=true, runsOn=null)::
     $.ghJob(
       'verify-jsonnet-gh-actions',
+      runsOn=runsOn,
       image=$.jsonnet_bin_image,
       steps=[
               $.checkout(ref='${{ github.event.pull_request.head.sha }}'),
@@ -47,7 +48,6 @@
                 ifClause='failure()',
               ),
             ],
-      runsOn=runsOn,
     ),
 
   updatePRDescriptionPipeline(
@@ -156,10 +156,11 @@
             $.action(
               'PR Agent action step',
               'gynzy/pr-agent@712f0ff0c37b71c676398f73c6ea0198eb9cdd03',
+              continueOnError=true,
               env={
                 OPENAI_KEY: $.secret('OPENAI_KEY'),
                 GITHUB_TOKEN: $.secret('GITHUB_TOKEN'),
-              }
+              },
             ),
           ]
         ),
@@ -171,4 +172,78 @@
         issue_comment: {},
       }
     ),
+
+  // Test if the changed files match the given glob patterns.
+  // Can test for multiple pattern groups, and sets multiple outputs.
+  //
+  // Parameters:
+  // changedFiles: a map of grouped glob patterns to test against.
+  //   The map key is the name of the group.
+  //   The map value is a list of glob patterns (as string, can use * and **) to test against.
+  //
+  // Outputs:
+  // steps.changes.outputs.<group>: true if the group matched, false otherwise
+  //
+  // Permissions:
+  // Requires the 'pull-requests': 'read' permission
+  //
+  // Example:
+  // $.testForChangedFiles({
+  //   'app': ['packages/*/app/**/*', 'package.json'],
+  //   'lib': ['packages/*/lib/**/*'],
+  // })
+  //
+  // This will set the following outputs:
+  // - steps.changes.outputs.app: true if any of the changed files match the patterns in the 'app' group
+  // - steps.changes.outputs.lib: true if any of the changed files match the patterns in the 'lib' group
+  //
+  // These can be tested as in an if clause as follows:
+  // if: steps.changes.outputs.app == 'true'
+  //
+  // See https://github.com/dorny/paths-filter for more information.
+  testForChangedFiles(changedFiles, headRef=null, baseRef=null)::
+    [
+      $.step('git safe directory', 'git config --global --add safe.directory $PWD'),
+      $.action(
+        'check-for-changes',
+        uses='dorny/paths-filter@v2',
+        id='changes',
+        with={
+               filters: |||
+                 %s
+               ||| % std.manifestYamlDoc(changedFiles),
+               token: '${{ github.token }}',
+             } +
+             (if headRef != null then { ref: headRef } else {}) +
+             (if baseRef != null then { base: baseRef } else {}),
+      ),
+    ],
+
+  awaitJob(name, jobs)::
+    local dependingJobs = std.flatMap(
+      function(job)
+        local jobNameArray = std.objectFields(job);
+        if std.length(jobNameArray) == 1 then [jobNameArray[0]] else [],
+      jobs
+    );
+    [
+      $.ghJob(
+        'await-' + name,
+        ifClause='${{ always() }}',
+        needs=dependingJobs,
+        useCredentials=false,
+        steps=[
+          $.step(
+            'success',
+            'exit 0',
+            ifClause="${{ contains(join(needs.*.result, ','), 'success') }}"
+          ),
+          $.step(
+            'failure',
+            'exit 1',
+            ifClause="${{ contains(join(needs.*.result, ','), 'failure') }}"
+          ),
+        ],
+      ),
+    ],
 }
