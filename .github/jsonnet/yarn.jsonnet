@@ -156,7 +156,7 @@
           echo "Setting tag/version for release/tag build.";
           PUBLISHVERSION=$VERSION;
           TAG="latest";
-        elif [[ "${GITHUB_REF_TYPE}" == "branch" && "${GITHUB_REF_NAME}" == "main" ]]; then
+        elif [[ "${GITHUB_REF_TYPE}" == "branch" && ( "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "master" ) ]] || [[ "${GITHUB_EVENT_NAME}" == "deployment" ]]; then
           echo "Setting tag/version for release/tag build.";
           PUBLISHVERSION=$VERSION;
           TAG="latest";
@@ -196,8 +196,8 @@
     local ifClause = (if onChangedFiles != false then "steps.changes.outputs.package == 'true'" else null);
     $.ghJob(
       'yarn-publish-preview',
-      image='node:18',
       runsOn=runsOn,
+      image='node:18',
       useCredentials=false,
       steps=
       [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
@@ -228,7 +228,7 @@
     $.ghJob(
       'yarn-publish',
       image='node:18',
-      runsOn=null,
+      runsOn=runsOn,
       useCredentials=false,
       steps=
       [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +

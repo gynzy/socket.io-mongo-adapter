@@ -24,8 +24,8 @@
   verifyJsonnet(fetch_upstream=true, runsOn=null)::
     $.ghJob(
       'verify-jsonnet-gh-actions',
-      image=$.jsonnet_bin_image,
       runsOn=runsOn,
+      image=$.jsonnet_bin_image,
       steps=[
               $.checkout(ref='${{ github.event.pull_request.head.sha }}'),
               $.step('remove-workflows', 'rm -f .github/workflows/*'),
