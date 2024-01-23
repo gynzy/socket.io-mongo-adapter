@@ -11,7 +11,10 @@ To release the specified version as a production build, simply merge the PR into
 
 The `@socket.io/mongo-adapter` package allows broadcasting packets between multiple Socket.IO servers.
 
-![Adapter diagram](./assets/adapter.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/adapter_dark.png">
+  <img alt="Diagram of Socket.IO packets forwarded through MongoDB" src="./assets/adapter.png">
+</picture>
 
 Unlike the existing [`socket.io-adapter-mongo`](https://github.com/lklepner/socket.io-adapter-mongo) package which uses [tailable cursors](https://docs.mongodb.com/manual/core/tailable-cursors/), this package relies on [change streams](https://docs.mongodb.com/manual/changeStreams/) and thus requires a replica set or a sharded cluster.
 

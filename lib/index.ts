@@ -6,7 +6,7 @@ import {
   Session,
 } from "socket.io-adapter";
 import { randomBytes } from "crypto";
-import { ObjectId, MongoServerError } from "mongodb";
+import { ObjectId, MongoServerError, WithId, Document } from "mongodb";
 import type { Collection, ChangeStream, ResumeToken } from "mongodb";
 
 const randomId = () => randomBytes(8).toString("hex");
@@ -140,6 +140,10 @@ const replaceBinaryObjectsByBuffers = (obj: any) => {
   return obj;
 };
 
+function onPublishError(err: Error) {
+  debug("something went wrong when inserting the MongoDB document: %s", err);
+}
+
 /**
  * Returns a function that will create a MongoAdapter instance.
  *
@@ -217,12 +221,12 @@ export function createAdapter(
 
     const defaultClose = adapter.close;
 
-    adapter.close = () => {
+    adapter.close = async () => {
       adapters.delete(nsp.name);
 
       if (adapters.size === 0) {
         changeStream.removeAllListeners("close");
-        changeStream.close();
+        await changeStream.close();
         // @ts-ignore
         changeStream = null;
         isClosed = true;
@@ -273,7 +277,7 @@ export class MongoAdapter extends Adapter {
 
     this.publish({
       type: EventType.INITIAL_HEARTBEAT,
-    });
+    }).catch(onPublishError);
   }
 
   close(): Promise<void> | void {
@@ -301,7 +305,7 @@ export class MongoAdapter extends Adapter {
       case EventType.INITIAL_HEARTBEAT: {
         this.publish({
           type: EventType.HEARTBEAT,
-        });
+        }).catch(onPublishError);
         break;
       }
       case EventType.BROADCAST: {
@@ -400,7 +404,7 @@ export class MongoAdapter extends Adapter {
               data: socket.data,
             })),
           },
-        });
+        }).catch(onPublishError);
         break;
       }
       case EventType.FETCH_SOCKETS_RESPONSE: {
@@ -477,7 +481,7 @@ export class MongoAdapter extends Adapter {
       debug("sending heartbeat");
       this.publish({
         type: EventType.HEARTBEAT,
-      });
+      }).catch(onPublishError);
       this.scheduleHeartbeat();
     }, this.heartbeatInterval);
   }
@@ -591,7 +595,7 @@ export class MongoAdapter extends Adapter {
           requestId,
           opts: MongoAdapter.serializeOptions(opts),
         },
-      });
+      }).catch(onPublishError);
 
       this.ackRequests.set(requestId, {
         type: EventType.BROADCAST,
@@ -630,7 +634,7 @@ export class MongoAdapter extends Adapter {
         opts: MongoAdapter.serializeOptions(opts),
         rooms,
       },
-    });
+    }).catch(onPublishError);
   }
 
   delSockets(opts: BroadcastOptions, rooms: Room[]) {
@@ -647,7 +651,7 @@ export class MongoAdapter extends Adapter {
         opts: MongoAdapter.serializeOptions(opts),
         rooms,
       },
-    });
+    }).catch(onPublishError);
   }
 
   disconnectSockets(opts: BroadcastOptions, close: boolean) {
@@ -664,7 +668,7 @@ export class MongoAdapter extends Adapter {
         opts: MongoAdapter.serializeOptions(opts),
         close,
       },
-    });
+    }).catch(onPublishError);
   }
 
   private getExpectedResponseCount() {
@@ -736,7 +740,7 @@ export class MongoAdapter extends Adapter {
       data: {
         packet,
       },
-    });
+    }).catch(onPublishError);
   }
 
   private async serverSideEmitWithAck(packet: any[]) {
@@ -783,7 +787,7 @@ export class MongoAdapter extends Adapter {
         requestId, // the presence of this attribute defines whether an acknowledgement is needed
         packet,
       },
-    });
+    }).catch(onPublishError);
   }
 
   override persistSession(session: any) {
@@ -791,7 +795,7 @@ export class MongoAdapter extends Adapter {
     this.publish({
       type: EventType.SESSION,
       data: session,
-    });
+    }).catch(onPublishError);
   }
 
   override async restoreSession(
@@ -821,11 +825,15 @@ export class MongoAdapter extends Adapter {
       return Promise.reject("error while fetching session");
     }
 
-    if (!results[0].value || !results[1]) {
+    const result = (results[0]?.ok
+      ? results[0].value // mongodb@5
+      : results[0]) as unknown as WithId<Document>; // mongodb@6
+
+    if (!result || !results[1]) {
       return Promise.reject("session or offset not found");
     }
 
-    const session = results[0].value.data;
+    const session = result.data;
 
     // could use a sparse index on [_id, nsp, data.opts.rooms, data.opts.except] (only index the documents whose type is EventType.BROADCAST)
     /* addition daniel genis 20231026
@@ -862,12 +870,12 @@ export class MongoAdapter extends Adapter {
     session.missedPackets = [];
 
     try {
-      await cursor.forEach((document: any) => {
+      for await (const document of cursor) {
         const packetData = document?.data?.packet?.data;
         if (packetData) {
           session.missedPackets.push(packetData);
         }
-      });
+      }
     } catch (e) {
       return Promise.reject("error while fetching missed packets");
     }
