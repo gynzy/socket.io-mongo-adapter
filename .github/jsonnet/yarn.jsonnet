@@ -1,21 +1,16 @@
-local base = import 'base.jsonnet';
-local cache = import 'cache.jsonnet';
-local images = import 'images.jsonnet';
-local misc = import 'misc.jsonnet';
-
 {
   yarn(ifClause=null, prod=false, workingDirectory=null)::
-    base.step(
+    $.step(
       'yarn' + (if prod then '-prod' else ''),
       run='yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline' + (if prod then ' --prod' else '') + ' || yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline' + (if prod then ' --prod' else ''),
       ifClause=ifClause,
       workingDirectory=workingDirectory
     ),
 
-  setNpmToken(ifClause=null, workingDirectory=null):: self.setGynzyNpmToken(ifClause=ifClause, workingDirectory=workingDirectory),
+  setNpmToken(ifClause=null, workingDirectory=null):: $.setGynzyNpmToken(ifClause=ifClause, workingDirectory=workingDirectory),
 
   setGynzyNpmToken(ifClause=null, workingDirectory=null)::
-    base.step(
+    $.step(
       'set gynzy npm_token',
       run=
       |||
@@ -26,14 +21,14 @@ local misc = import 'misc.jsonnet';
         EOF
       |||,
       env={
-        NPM_TOKEN: misc.secret('npm_token'),
+        NPM_TOKEN: $.secret('npm_token'),
       },
       ifClause=ifClause,
       workingDirectory=workingDirectory,
     ),
 
   setGithubNpmToken(ifClause=null, workingDirectory=null)::
-    base.step(
+    $.step(
       'set github npm_token',
       run=
       |||
@@ -44,53 +39,83 @@ local misc = import 'misc.jsonnet';
         EOF
       |||,
       env={
-        NODE_AUTH_TOKEN: misc.secret('GITHUB_TOKEN'),
+        NODE_AUTH_TOKEN: $.secret('GITHUB_TOKEN'),
       },
       ifClause=ifClause,
       workingDirectory=workingDirectory,
     ),
 
-  checkoutAndYarn(cacheName=null, ifClause=null, fullClone=false, ref=null, prod=false, workingDirectory=null, source='gynzy')::
-    misc.checkout(ifClause=ifClause, fullClone=fullClone, ref=ref) +
-    (if source == 'gynzy' then self.setGynzyNpmToken(ifClause=ifClause, workingDirectory=workingDirectory) else []) +
-    (if source == 'github' then self.setGithubNpmToken(ifClause=ifClause, workingDirectory=workingDirectory) else []) +
-    (if cacheName == null then [] else self.fetchYarnCache(cacheName, ifClause=ifClause, workingDirectory=workingDirectory)) +
-    self.yarn(ifClause=ifClause, prod=prod, workingDirectory=workingDirectory),
+  checkoutAndYarn(cacheName=null, ifClause=null, fullClone=false, ref=null, prod=false, workingDirectory=null)::
+    $.checkout(ifClause=ifClause, fullClone=fullClone, ref=ref) +
+    $.setGynzyNpmToken(ifClause=ifClause, workingDirectory=workingDirectory) +
+    (if cacheName == null then [] else $.fetchYarnCache(cacheName, ifClause=ifClause, workingDirectory=workingDirectory)) +
+    $.yarn(ifClause=ifClause, prod=prod, workingDirectory=workingDirectory),
 
-  fetchYarnCache(cacheName, ifClause=null, workingDirectory=null)::
-    cache.fetchCache(
-      cacheName=cacheName,
-      folders=['.yarncache'],
-      additionalCleanupCommands=["find . -type d -name 'node_modules' | xargs rm -rf"],
-      ifClause=ifClause,
-      workingDirectory=workingDirectory
-    ),
+  fetchYarnCache(cacheName, ifClause=null, workingDirectory=null):: $.step(
+    'download yarn cache',
+    run=
+    |||
+      set +e;
+      echo "Downloading yarn cache && node_modules"
+      wget -q -O - "https://storage.googleapis.com/files-gynzy-com-test/yarn-cache/${CACHE_NAME}.tar.gz" | tar xfz -
+      if [ $? -ne 0 ]; then
+        # download failed. cleanup node_modules because it can contain a yarn integrity file but not have all the data as specified
+        echo "Cache download failed, cleanup up caches and run yarn without cache"
+        find . -type d -name 'node_modules' | xargs rm -rf
+        rm -rf .yarncache
+        echo "Cleanup complete"
+      else
+        echo "Finished downloading yarn cache && node_modules"
+      fi
+    |||,
+    ifClause=ifClause,
+    workingDirectory=workingDirectory,
+    env={
+      CACHE_NAME: cacheName,
+    },
+  ),
 
   updateYarnCachePipeline(cacheName, appsDir='packages', image=null, useCredentials=null)::
-    base.pipeline(
+    $.pipeline(
       'update-yarn-cache',
       [
-        base.ghJob(
+        $.ghJob(
           'update-yarn-cache',
           image=image,
           useCredentials=useCredentials,
           ifClause="${{ github.event.deployment.environment == 'production' || github.event.deployment.environment == 'prod' }}",
           steps=[
-            misc.checkout() +
-            self.setGynzyNpmToken() +
-            self.yarn(),
-            base.action(
+            $.checkout() +
+            $.setGynzyNpmToken() +
+            $.yarn(),
+            $.action(
               'setup auth',
-              'google-github-actions/auth@v2',
+              'google-github-actions/auth@v1',
               with={
-                credentials_json: misc.secret('SERVICE_JSON'),
+                credentials_json: $.secret('SERVICE_JSON'),
               },
               id='auth',
             ),
-            base.action('setup-gcloud', 'google-github-actions/setup-gcloud@v2'),
-            cache.uploadCache(
-              cacheName=cacheName,
-              tarCommand='ls "' + appsDir + '/*/node_modules" -1 -d 2>/dev/null | xargs tar -c .yarncache node_modules',
+            $.action('setup-gcloud', 'google-github-actions/setup-gcloud@v0'),
+            $.step(
+              'upload-yarn-cache',
+              |||
+                set -e
+
+                echo "Creating cache archive"
+                # v1
+                ls "${APPS_DIR}/*/node_modules" -1 -d 2>/dev/null | xargs tar -czf "${CACHE_NAME}.tar.gz" .yarncache node_modules
+
+                echo "Upload cache"
+                gsutil cp "${CACHE_NAME}.tar.gz" "gs://files-gynzy-com-test/yarn-cache/${CACHE_NAME}.tar.gz.tmp"
+                gsutil mv "gs://files-gynzy-com-test/yarn-cache/${CACHE_NAME}.tar.gz.tmp" "gs://files-gynzy-com-test/yarn-cache/${CACHE_NAME}.tar.gz"
+
+                echo "Upload finished"
+              |||,
+              env={
+                CACHE_NAME: cacheName,
+                APPS_DIR: appsDir,
+              }
             ),
           ],
         ),
@@ -98,7 +123,7 @@ local misc = import 'misc.jsonnet';
       event='deployment',
     ),
 
-  configureGoogleAuth(secret):: base.step(
+  configureGoogleAuth(secret):: $.step(
     'activate google service account',
     run=
     |||
@@ -111,7 +136,7 @@ local misc = import 'misc.jsonnet';
   ),
 
   yarnPublish(isPr=true, ifClause=null)::
-    base.step(
+    $.step(
       'publish',
       |||
         bash -c 'set -xeo pipefail;
@@ -150,8 +175,8 @@ local misc = import 'misc.jsonnet';
 
   yarnPublishToRepositories(isPr, repositories, ifClause=null)::
     (std.flatMap(function(repository)
-                   if repository == 'gynzy' then [self.setGynzyNpmToken(ifClause=ifClause), self.yarnPublish(isPr=isPr, ifClause=ifClause)]
-                   else if repository == 'github' then [self.setGithubNpmToken(ifClause=ifClause), self.yarnPublish(isPr=isPr, ifClause=ifClause)]
+                   if repository == 'gynzy' then [$.setGynzyNpmToken(ifClause=ifClause), $.yarnPublish(isPr=isPr, ifClause=ifClause)]
+                   else if repository == 'github' then [$.setGithubNpmToken(ifClause=ifClause), $.yarnPublish(isPr=isPr, ifClause=ifClause)]
                    else error 'Unknown repository type given.',
                  repositories)),
 
@@ -160,30 +185,30 @@ local misc = import 'misc.jsonnet';
     image='node:18',
     useCredentials=false,
     gitCloneRef='${{ github.event.pull_request.head.sha }}',
-    buildSteps=[base.step('build', 'yarn build')],
+    buildSteps=[$.step('build', 'yarn build')],
     checkVersionBump=true,
     repositories=['gynzy'],
     onChangedFiles=false,
     changedFilesHeadRef=null,
     changedFilesBaseRef=null,
     runsOn=null,
-  )::
+  ):
     local ifClause = (if onChangedFiles != false then "steps.changes.outputs.package == 'true'" else null);
-    base.ghJob(
+    $.ghJob(
       'yarn-publish-preview',
       runsOn=runsOn,
       image='node:18',
       useCredentials=false,
       steps=
-      [self.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
-      (if onChangedFiles != false then misc.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
+      [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
+      (if onChangedFiles != false then $.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
       (if checkVersionBump then [
-         base.action('check-version-bump', uses='del-systems/check-if-version-bumped@v1', with={
+         $.action('check-version-bump', uses='del-systems/check-if-version-bumped@v1', with={
            token: '${{ github.token }}',
          }, ifClause=ifClause),
        ] else []) +
       (if onChangedFiles != false then std.map(function(step) std.map(function(s) s { 'if': ifClause }, step), buildSteps) else buildSteps) +
-      self.yarnPublishToRepositories(isPr=true, repositories=repositories, ifClause=ifClause),
+      $.yarnPublishToRepositories(isPr=true, repositories=repositories, ifClause=ifClause),
       permissions={ packages: 'write', contents: 'read', 'pull-requests': 'read' },
     ),
 
@@ -191,25 +216,25 @@ local misc = import 'misc.jsonnet';
     image='node:18',
     useCredentials=false,
     gitCloneRef='${{ github.sha }}',
-    buildSteps=[base.step('build', 'yarn build')],
+    buildSteps=[$.step('build', 'yarn build')],
     repositories=['gynzy'],
     onChangedFiles=false,
     changedFilesHeadRef=null,
     changedFilesBaseRef=null,
     ifClause=null,
     runsOn=null,
-  )::
+  ):
     local stepIfClause = (if onChangedFiles != false then "steps.changes.outputs.package == 'true'" else null);
-    base.ghJob(
+    $.ghJob(
       'yarn-publish',
       image='node:18',
       runsOn=runsOn,
       useCredentials=false,
       steps=
-      [misc.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
-      (if onChangedFiles != false then misc.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
+      [$.checkoutAndYarn(ref=gitCloneRef, fullClone=false)] +
+      (if onChangedFiles != false then $.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
       (if onChangedFiles != false then std.map(function(step) std.map(function(s) s { 'if': stepIfClause }, step), buildSteps) else buildSteps) +
-      self.yarnPublishToRepositories(isPr=false, repositories=repositories, ifClause=stepIfClause),
+      $.yarnPublishToRepositories(isPr=false, repositories=repositories, ifClause=stepIfClause),
       permissions={ packages: 'write', contents: 'read', 'pull-requests': 'read' },
       ifClause=ifClause,
     ),

@@ -1,57 +1,44 @@
-local base = import 'base.jsonnet';
-local images = import 'images.jsonnet';
-
 {
   checkout(ifClause=null, fullClone=false, ref=null)::
     local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {});
-    base.action(
+    $.action(
       'Check out repository code',
       'actions/checkout@v3',
       with=with,
       ifClause=ifClause
-    ) +
-    base.step('git safe directory', "command -v git && git config --global --add safe.directory '*' || true"),
-
-  lint(service)::
-    base.step('lint-' + service,
-              './node_modules/.bin/eslint "./packages/' + service + '/{app,lib,tests,config,addon}/**/*.js" --quiet'),
-
-  lintAll()::
-    base.step('lint', 'yarn lint'),
-
-  verifyGoodFences()::
-    base.step('verify-good-fences', 'yarn run gf'),
-
-  improvedAudit()::
-    base.step('audit', 'yarn improved-audit'),
-
-  verifyJsonnetWorkflow()::
-    base.pipeline(
-      'misc',
-      [
-        self.verifyJsonnet(fetch_upstream=false),
-      ],
-      event='pull_request',
     ),
 
+  lint(service)::
+    $.step('lint-' + service,
+           './node_modules/.bin/eslint "./packages/' + service + '/{app,lib,tests,config,addon}/**/*.js" --quiet'),
+
+  lintAll()::
+    $.step('lint', 'yarn lint'),
+
+  verifyGoodFences()::
+    $.step('verify-good-fences', 'yarn run gf'),
+
+  improvedAudit()::
+    $.step('audit', 'yarn improved-audit'),
+
   verifyJsonnet(fetch_upstream=true, runsOn=null)::
-    base.ghJob(
+    $.ghJob(
       'verify-jsonnet-gh-actions',
       runsOn=runsOn,
-      image=images.jsonnet_bin_image,
+      image=$.jsonnet_bin_image,
       steps=[
-              self.checkout(ref='${{ github.event.pull_request.head.sha }}'),
-              base.step('remove-workflows', 'rm -f .github/workflows/*'),
+              $.checkout(ref='${{ github.event.pull_request.head.sha }}'),
+              $.step('remove-workflows', 'rm -f .github/workflows/*'),
             ] +
             (
-              if fetch_upstream then [base.step('fetch latest lib-jsonnet',
-                                                ' rm -rf .github/jsonnet/;\n                mkdir .github/jsonnet/;\n                cd .github;\n                curl https://files.gynzy.net/lib-jsonnet/v1/jsonnet-prod.tar.gz | tar xvzf -;\n              ')] else []
+              if fetch_upstream then [$.step('fetch latest lib-jsonnet',
+                                             ' rm -rf .github/jsonnet/;\n                mkdir .github/jsonnet/;\n                cd .github;\n                curl https://files.gynzy.net/lib-jsonnet/v1/jsonnet-prod.tar.gz | tar xvzf -;\n              ')] else []
             )
             + [
-              base.step('generate-workflows', 'jsonnet -m .github/workflows/ -S .github.jsonnet;'),
-              base.step('git workaround', 'git config --global --add safe.directory $PWD'),
-              base.step('check-jsonnet-diff', 'git diff --exit-code'),
-              base.step(
+              $.step('generate-workflows', 'jsonnet -m .github/workflows/ -S .github.jsonnet;'),
+              $.step('git workaround', 'git config --global --add safe.directory $PWD'),
+              $.step('check-jsonnet-diff', 'git diff --exit-code'),
+              $.step(
                 'possible-causes-for-error',
                 'echo "Possible causes: \n' +
                 '1. You updated jsonnet files, but did not regenerate the workflows. \n' +
@@ -72,16 +59,16 @@ local images = import 'images.jsonnet';
     titleUpdateAction='prefix',
     otherOptions={},
   )::
-    base.pipeline(
+    $.pipeline(
       'update-pr-description',
       event={
         pull_request: { types: ['opened'] },
       },
       jobs=[
-        base.ghJob(
+        $.ghJob(
           'update-pr-description',
           steps=[
-            base.action(
+            $.action(
               'update-pr-description',
               'gynzy/pr-update-action@v2',
               with={
@@ -111,7 +98,7 @@ local images = import 'images.jsonnet';
     '${{ secrets.' + secretName + ' }}',
 
   pollUrlForContent(url, expectedContent, name='verify-deploy', attempts='100', interval='2000', ifClause=null)::
-    base.action(
+    $.action(
       name,
       'gynzy/wait-for-http-content@v1',
       with={
@@ -124,16 +111,16 @@ local images = import 'images.jsonnet';
     ),
 
   cleanupOldBranchesPipelineCron()::
-    base.pipeline(
+    $.pipeline(
       'purge-old-branches',
       [
-        base.ghJob(
+        $.ghJob(
           'purge-old-branches',
           useCredentials=false,
           steps=[
-            base.step('setup', 'apk add git bash'),
-            self.checkout(),
-            base.action(
+            $.step('setup', 'apk add git bash'),
+            $.checkout(),
+            $.action(
               'Run delete-old-branches-action',
               'beatlabs/delete-old-branches-action@6e94df089372a619c01ae2c2f666bf474f890911',
               with={
@@ -157,6 +144,35 @@ local images = import 'images.jsonnet';
       },
     ),
 
+  codiumAIPRAgent()::
+    $.pipeline(
+      'codium-ai',
+      [
+        $.ghJob(
+          'pr_agent_job',
+          useCredentials=false,
+          ifClause='${{ github.event.pull_request.draft == false }}',
+          steps=[
+            $.action(
+              'PR Agent action step',
+              'gynzy/pr-agent@712f0ff0c37b71c676398f73c6ea0198eb9cdd03',
+              continueOnError=true,
+              env={
+                OPENAI_KEY: $.secret('OPENAI_KEY'),
+                GITHUB_TOKEN: $.secret('GITHUB_TOKEN'),
+              },
+            ),
+          ]
+        ),
+      ],
+      event={
+        pull_request: {
+          types: ['opened', 'reopened', 'ready_for_review'],
+        },
+        issue_comment: {},
+      }
+    ),
+
   // Test if the changed files match the given glob patterns.
   // Can test for multiple pattern groups, and sets multiple outputs.
   //
@@ -172,7 +188,7 @@ local images = import 'images.jsonnet';
   // Requires the 'pull-requests': 'read' permission
   //
   // Example:
-  // misc.testForChangedFiles({
+  // $.testForChangedFiles({
   //   'app': ['packages/*/app/**/*', 'package.json'],
   //   'lib': ['packages/*/lib/**/*'],
   // })
@@ -187,8 +203,8 @@ local images = import 'images.jsonnet';
   // See https://github.com/dorny/paths-filter for more information.
   testForChangedFiles(changedFiles, headRef=null, baseRef=null)::
     [
-      base.step('git safe directory', 'git config --global --add safe.directory $PWD'),
-      base.action(
+      $.step('git safe directory', 'git config --global --add safe.directory $PWD'),
+      $.action(
         'check-for-changes',
         uses='dorny/paths-filter@v2',
         id='changes',
@@ -203,15 +219,6 @@ local images = import 'images.jsonnet';
       ),
     ],
 
-  // Wait for the given jobs to finish.
-  // Exits successfully if all jobs are successful, otherwise exits with an error.
-  //
-  // Parameters:
-  // name: the name of the github job
-  // jobs: a list of job names to wait for
-  //
-  // Returns:
-  // a job that waits for the given jobs to finish
   awaitJob(name, jobs)::
     local dependingJobs = std.flatMap(
       function(job)
@@ -220,18 +227,18 @@ local images = import 'images.jsonnet';
       jobs
     );
     [
-      base.ghJob(
+      $.ghJob(
         'await-' + name,
         ifClause='${{ always() }}',
         needs=dependingJobs,
         useCredentials=false,
         steps=[
-          base.step(
+          $.step(
             'success',
             'exit 0',
             ifClause="${{ contains(join(needs.*.result, ','), 'success') }}"
           ),
-          base.step(
+          $.step(
             'failure',
             'exit 1',
             ifClause="${{ contains(join(needs.*.result, ','), 'failure') }}"
@@ -239,30 +246,4 @@ local images = import 'images.jsonnet';
         ],
       ),
     ],
-
-  // Post a job to a kubernetes cluster
-  //
-  // Parameters:
-  // name: the name of the github job
-  // job_name: the name of the job to be posted
-  // cluster: the cluster to post the job to. This should be an object from the clusters module
-  // image: the image to use for the job
-  // environment: a map of environment variables to pass to the job
-  // command: the command to run in the job (optional)
-  postJob(name, job_name, cluster, image, environment, command='')::
-    base.action(
-      name,
-      'docker://' + images.job_poster_image,
-      env={
-        JOB_NAME: job_name,
-        IMAGE: image,
-        COMMAND: command,
-        ENVIRONMENT: std.join(' ', std.objectFields(environment)),
-        GCE_JSON: cluster.secret,
-        GKE_PROJECT: cluster.project,
-        GKE_ZONE: cluster.zone,
-        GKE_CLUSTER: cluster.name,
-        NODESELECTOR_TYPE: cluster.jobNodeSelectorType,
-      } + environment,
-    ),
 }

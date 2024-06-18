@@ -1,9 +1,6 @@
-local base = import 'base.jsonnet';
-local images = import 'images.jsonnet';
-
 {
   notifiyDeployFailure(channel='#dev-deployments', name='notify-failure', environment='production')::
-    base.action(
+    $.action(
       name,
       'act10ns/slack@v2',
       with={
@@ -16,7 +13,7 @@ local images = import 'images.jsonnet';
     ),
 
   sendSlackMessage(channel='#dev-deployments', stepName='sendSlackMessage', message=null, ifClause=null)::
-    base.action(
+    $.action(
       stepName,
       'act10ns/slack@v2',
       with={
@@ -26,19 +23,5 @@ local images = import 'images.jsonnet';
         message: message,
       },
       ifClause=ifClause,
-    ),
-
-  // This action is used to create a deployment marker in New Relic.
-  // GUID is the entity guid of the application in New Relic. It can be found by All Entities > (select service) > Metadata > Entity GUID
-  newrelicCreateDeploymentMarker(stepName='newrelic-deployment', entityGuid)::
-    base.action(
-      stepName,
-      images.newrelic_deployment_marker_image,
-      with={
-        apiKey: $.secret('NEWRELIC_API_KEY'),
-        guid: entityGuid,
-        commit: '${{ github.sha }}',
-        version: '${{ github.sha }}',
-      },
     ),
 }

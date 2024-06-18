@@ -1,6 +1,3 @@
-local base = import 'base.jsonnet';
-local images = import 'images.jsonnet';
-
 {
   database_servers: {
     test: {
@@ -28,6 +25,13 @@ local images = import 'images.jsonnet';
       server: 'eu-w4-responses-production',
       region: 'europe-west4',
       project: 'unicorn-985',
+    },
+    'eu-w4-metrics-production': {
+      type: 'mysql',
+      server: 'eu-w4-metrics-production',
+      region: 'europe-west4',
+      project: 'unicorn-985',
+      lifecycle: 'deprecated',
     },
     'gynzy-test': {
       type: 'mysql',
@@ -93,9 +97,9 @@ local images = import 'images.jsonnet';
     // delete database by setting it to null and calling prune afterwards
     local pluginOptions = std.prune(mysqlActionOptions { task: 'clone', database: null });
 
-    base.action(
+    $.action(
       'copy-database',
-      images.mysql_action_image,
+      $.mysql_action_image,
       with=pluginOptions
     ),
 
@@ -106,9 +110,9 @@ local images = import 'images.jsonnet';
     // delete database by setting it to null and calling prune afterwards
     local pluginOptions = std.prune(mysqlActionOptions { task: 'remove', database: null });
 
-    base.action(
+    $.action(
       'delete-database',
-      images.mysql_action_image,
+      $.mysql_action_image,
       with=pluginOptions
     ),
 }

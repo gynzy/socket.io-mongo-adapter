@@ -1,5 +1,5 @@
 (import 'base.jsonnet') +
-{ clusters: import 'clusters.jsonnet' } +
+(import 'clusters.jsonnet') +
 (import 'databases.jsonnet') +
 (import 'docker.jsonnet') +
 (import 'helm.jsonnet') +
@@ -15,6 +15,4 @@
 (import 'deployment.jsonnet') +
 (import 'notifications.jsonnet') +
 (import 'complete-workflows.jsonnet') +
-{ pnpm: import 'pnpm.jsonnet' } +
-{ cache: import 'cache.jsonnet' } +
-{ buckets: import 'buckets.jsonnet' }
+{}

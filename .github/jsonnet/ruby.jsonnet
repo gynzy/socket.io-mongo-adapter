@@ -1,11 +1,3 @@
-local base = import 'base.jsonnet';
-local database = import 'databases.jsonnet';
-local docker = import 'docker.jsonnet';
-local helm = import 'helm.jsonnet';
-local misc = import 'misc.jsonnet';
-local notifications = import 'notifications.jsonnet';
-local services = import 'services.jsonnet';
-
 {
   rubyDeployPRPipeline(
     serviceName,
@@ -25,7 +17,7 @@ local services = import 'services.jsonnet';
       database_name_source: serviceName,
       database_host: 'cloudsql-proxy',
       database_username: serviceName,
-      database_password: misc.secret('database_password_test'),
+      database_password: $.secret('database_password_test'),
     } + mysqlCloneOptions;
 
     local migrateOptionsWithDefaults = {
@@ -33,35 +25,34 @@ local services = import 'services.jsonnet';
       RAILS_ENV: 'production',
       RAILS_DB_HOST: 'cloudsql-proxy',
       RAILS_DB_NAME: serviceName + '_pr_${{ github.event.number }}',
-      RAILS_DB_PASSWORD: misc.secret('database_password_test'),
+      RAILS_DB_PASSWORD: $.secret('database_password_test'),
       RAILS_DB_USER: serviceName,
-      SECRET_KEY_BASE: misc.secret('rails_secret_test'),
     } + migrateOptions;
 
-    base.pipeline(
+    $.pipeline(
       'deploy-pr',
       [
-        base.ghJob(
+        $.ghJob(
           'deploy-pr',
           image=rubyImageName,
           steps=[
-                  misc.checkout(ref='${{ github.event.pull_request.head.sha }}'),
-                  self.setVerionFile(),
+                  $.checkout(ref='${{ github.event.pull_request.head.sha }}'),
+                  $.setVerionFile(),
                 ] +
-                (if mysqlCloneOptionsWithDefaults.enabled then [database.copyDatabase(mysqlCloneOptionsWithDefaults)] else []) +
-                (if migrateOptionsWithDefaults.enabled then self.rubyMigrate(migrateOptionsWithDefaults) else []) +
+                (if mysqlCloneOptionsWithDefaults.enabled then [$.copyDatabase(mysqlCloneOptionsWithDefaults)] else []) +
+                (if migrateOptionsWithDefaults.enabled then $.rubyMigrate(migrateOptionsWithDefaults) else []) +
                 [
-                  docker.buildDocker(
+                  $.buildDocker(
                     dockerImageName,
                     env={
-                      BUNDLE_GITHUB__COM: misc.secret('BUNDLE_GITHUB__COM'),
+                      BUNDLE_GITHUB__COM: $.secret('BUNDLE_GITHUB__COM'),
                     },
-                    build_args='BUNDLE_GITHUB__COM=' + misc.secret('BUNDLE_GITHUB__COM'),
+                    build_args='BUNDLE_GITHUB__COM=' + $.secret('BUNDLE_GITHUB__COM'),
                   ),
-                  helm.helmDeployPR(serviceName, helmDeployOptions),
+                  $.helmDeployPR(serviceName, helmDeployOptions),
                 ],
           services={} +
-                   (if mysqlCloneOptionsWithDefaults.enabled then { 'cloudsql-proxy': services.cloudsql_proxy_service(mysqlCloneOptionsWithDefaults.database) } else {})
+                   (if mysqlCloneOptionsWithDefaults.enabled then { 'cloudsql-proxy': $.cloudsql_proxy_service(mysqlCloneOptionsWithDefaults.database) } else {})
         ),
       ],
       event='pull_request',
@@ -69,20 +60,18 @@ local services = import 'services.jsonnet';
 
   rubyMigrate(migrateOptions)::
     local env = {
-      BUNDLE_GITHUB__COM: misc.secret('BUNDLE_GITHUB__COM'),
+      BUNDLE_GITHUB__COM: $.secret('BUNDLE_GITHUB__COM'),
       SSO_PUBLIC_KEY: '',
       RAILS_ENV: 'production',
       RAILS_DB_HOST: migrateOptions.RAILS_DB_HOST,
       RAILS_DB_NAME: migrateOptions.RAILS_DB_NAME,
       RAILS_DB_PASSWORD: migrateOptions.RAILS_DB_PASSWORD,
       RAILS_DB_USER: migrateOptions.RAILS_DB_USER,
-      SECRET_KEY_BASE: migrateOptions.SECRET_KEY_BASE,
     };
 
     [
-      base.step('bundle install', 'bundle install', env={ BUNDLE_GITHUB__COM: misc.secret('BUNDLE_GITHUB__COM') }),
-      base.step('migrate-db', 'rails db:migrate;', env=env),
-      base.step('seed-db', 'rails db:seed;', env=env),
+      $.step('bundle install', 'bundle install', env={ BUNDLE_GITHUB__COM: $.secret('BUNDLE_GITHUB__COM') }),
+      $.step('migrate-db', 'rails db:migrate;', env=env),
     ]
   ,
 
@@ -91,24 +80,24 @@ local services = import 'services.jsonnet';
     enableDatabase=false,
     generateCommands=null,
     extra_env={},
-    services={ db: services.mysql57service(database='ci', password='ci', root_password='1234test', username='ci') },
+    services={ db: $.mysql57service(database='ci', password='ci', root_password='1234test', username='ci') },
     rubyImageName=null,
   )::
     assert rubyImageName != null;
-    base.ghJob(
+    $.ghJob(
       'apidocs',
       image=rubyImageName,
       ifClause="${{ github.event.deployment.environment == 'production' }}",
       steps=[
-        misc.checkout(),
-        base.step(
+        $.checkout(),
+        $.step(
           'generate',
           (if generateCommands != null then generateCommands else
              ' bundle config --delete without;\n            bundle install;\n            bundle exec rails db:test:prepare;\n            bundle exec rails docs:generate;\n          '),
           env={
                 RAILS_ENV: 'test',
-                GOOGLE_PRIVATE_KEY: misc.secret('GOOGLE_PRIVATE_KEY'),
-                BUNDLE_GITHUB__COM: misc.secret('BUNDLE_GITHUB__COM'),
+                GOOGLE_PRIVATE_KEY: $.secret('GOOGLE_PRIVATE_KEY'),
+                BUNDLE_GITHUB__COM: $.secret('BUNDLE_GITHUB__COM'),
               } +
               (if enableDatabase then
                  {
@@ -118,22 +107,22 @@ local services = import 'services.jsonnet';
                    RAILS_DB_USER: 'ci',
                  } else {}) + extra_env
         ),
-        base.action(
+        $.action(
           'setup auth',
-          'google-github-actions/auth@v2',
+          'google-github-actions/auth@v1',
           with={
-            credentials_json: misc.secret('GCE_JSON'),
+            credentials_json: $.secret('GCE_JSON'),
           },
           id='auth',
         ),
-        base.action('setup-gcloud', 'google-github-actions/setup-gcloud@v2'),
-        base.step('deploy-api-docs', 'gsutil -m cp -r doc/api/** gs://apidocs.gynzy.com/' + serviceName + '/'),
+        $.action('setup-gcloud', 'google-github-actions/setup-gcloud@v0'),
+        $.step('deploy-api-docs', 'gsutil -m cp -r doc/api/** gs://apidocs.gynzy.com/' + serviceName + '/'),
       ],
       services=(if enableDatabase then services else null),
     ),
 
   setVerionFile(version='${{ github.event.pull_request.head.sha }}', file='VERSION')::
-    base.step(
+    $.step(
       'set-version',
       'echo "' + version + '" > ' + file + ';\n        echo "Generated version number:";\n        cat ' + file + ';\n      '
     ),
@@ -150,13 +139,13 @@ local services = import 'services.jsonnet';
       database_name_target: serviceName + '_pr_${{ github.event.number }}',
       database_host: 'cloudsql-proxy',
       database_username: serviceName,
-      database_password: misc.secret('database_password_test'),
+      database_password: $.secret('database_password_test'),
     } + mysqlDeleteOptions;
 
-    base.pipeline(
+    $.pipeline(
       'close-pr',
       [
-        helm.helmDeletePRJob(serviceName, options, helmPath, deploymentName, mysqlDeleteOptionsWithDefaults),
+        $.helmDeletePRJob(serviceName, options, helmPath, deploymentName, mysqlDeleteOptionsWithDefaults),
       ],
       event={
         pull_request: {
@@ -180,22 +169,21 @@ local services = import 'services.jsonnet';
       RAILS_ENV: 'production',
       RAILS_DB_HOST: 'cloudsql-proxy',
       RAILS_DB_NAME: serviceName,
-      RAILS_DB_PASSWORD: misc.secret('database_password_test'),
+      RAILS_DB_PASSWORD: $.secret('database_password_test'),
       RAILS_DB_USER: serviceName,
-      SECRET_KEY_BASE: misc.secret('rails_secret_test'),
     } + migrateOptions;
 
-    base.ghJob(
+    $.ghJob(
       'deploy-test',
       ifClause="${{ github.event.deployment.environment == 'test' }}",
       image=image,
       useCredentials=useCredentials,
       steps=
-      [misc.checkout()] +
-      (if migrateOptionsWithDefaults.enabled then self.rubyMigrate(migrateOptionsWithDefaults) else []) +
-      [helm.helmDeployTest(serviceName, options, helmPath, deploymentName)],
+      [$.checkout()] +
+      (if migrateOptionsWithDefaults.enabled then $.rubyMigrate(migrateOptionsWithDefaults) else []) +
+      [$.helmDeployTest(serviceName, options, helmPath, deploymentName)],
       services={} +
-               (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': services.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
+               (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': $.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
     ),
 
   rubyDeployProdJob(
@@ -213,20 +201,21 @@ local services = import 'services.jsonnet';
       RAILS_ENV: 'production',
       RAILS_DB_HOST: 'cloudsql-proxy',
       RAILS_DB_NAME: serviceName,
-      RAILS_DB_PASSWORD: misc.secret('database_password_production'),
+      RAILS_DB_PASSWORD: $.secret('database_password_production'),
       RAILS_DB_USER: serviceName,
-      SECRET_KEY_BASE: misc.secret('rails_secret_production'),
     } + migrateOptions;
 
-    base.ghJob(
+    $.ghJob(
       'deploy-prod',
       ifClause="${{ github.event.deployment.environment == 'production' }}",
       image=image,
       useCredentials=useCredentials,
-      steps=[misc.checkout()] +
-            (if migrateOptionsWithDefaults.enabled then self.rubyMigrate(migrateOptionsWithDefaults) else []) +
-            [helm.helmDeployProd(serviceName, options, helmPath, deploymentName)] + [notifications.notifiyDeployFailure()],
+      steps=[$.checkout()] +
+            (if migrateOptionsWithDefaults.enabled then $.rubyMigrate(migrateOptionsWithDefaults) else []) +
+            [$.helmDeployProd(serviceName, options, helmPath, deploymentName)] + [$.notifiyDeployFailure()],
       services={} +
-               (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': services.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
+               (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': $.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
     ),
+
+
 }

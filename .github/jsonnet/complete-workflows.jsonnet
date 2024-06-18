@@ -1,7 +1,3 @@
-local base = import 'base.jsonnet';
-local misc = import 'misc.jsonnet';
-local yarn = import 'yarn.jsonnet';
-
 {
   /*
     @param {string[]} repositories - The repositories to publish to
@@ -13,21 +9,21 @@ local yarn = import 'yarn.jsonnet';
   workflowJavascriptPackage(repositories=['gynzy'], isPublicFork=true, checkVersionBump=true, testJob=null, branch='main')::
     local runsOn = (if isPublicFork then 'ubuntu-latest' else null);
 
-    base.pipeline(
+    $.pipeline(
       'misc',
-      [misc.verifyJsonnet(fetch_upstream=false, runsOn=runsOn)],
+      [$.verifyJsonnet(fetch_upstream=false, runsOn=runsOn)],
     ) +
-    base.pipeline(
+    $.pipeline(
       'publish-prod',
       [
-        yarn.yarnPublishJob(repositories=repositories, runsOn=runsOn),
+        $.yarnPublishJob(repositories=repositories, runsOn=runsOn),
       ],
-      event={ push: { branches: [branch] } },
+      event={ push: { branches: [ branch ] } },
     ) +
-    base.pipeline(
+    $.pipeline(
       'pr',
       [
-        yarn.yarnPublishPreviewJob(repositories=repositories, runsOn=runsOn, checkVersionBump=checkVersionBump),
+        $.yarnPublishPreviewJob(repositories=repositories, runsOn=runsOn, checkVersionBump=checkVersionBump),
       ] +
       (if testJob != null then
          [testJob]

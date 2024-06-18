@@ -1,13 +1,10 @@
-local images = import 'images.jsonnet';
-local misc = import 'misc.jsonnet';
-
 {
   mysql57service(database=null, password=null, root_password=null, username=null, port='3306')::
     {
-      image: images.default_mysql57_image,
+      image: $.default_mysql57_image,
       credentials: {
         username: '_json_key',
-        password: misc.secret('docker_gcr_io'),
+        password: $.secret('docker_gcr_io'),
       },
       env: {
         MYSQL_DATABASE: database,
@@ -22,10 +19,10 @@ local misc = import 'misc.jsonnet';
 
   mysql8service(database=null, password=null, root_password=null, username=null, port='3306')::
     {
-      image: images.default_mysql8_image,
+      image: $.default_mysql8_image,
       credentials: {
         username: '_json_key',
-        password: misc.secret('docker_gcr_io'),
+        password: $.secret('docker_gcr_io'),
       },
       env: {
         MYSQL_DATABASE: database,
@@ -40,27 +37,27 @@ local misc = import 'misc.jsonnet';
 
   cloudsql_proxy_service(database)::
     {
-      image: images.default_cloudsql_image,
+      image: $.default_cloudsql_image,
       credentials: {
         username: '_json_key',
-        password: misc.secret('docker_gcr_io'),
+        password: $.secret('docker_gcr_io'),
       },
       env: {
         GOOGLE_PROJECT: database.project,
         CLOUDSQL_ZONE: database.region,
         CLOUDSQL_INSTANCE: database.server,
-        SERVICE_JSON: misc.secret('GCE_JSON'),
+        SERVICE_JSON: $.secret('GCE_JSON'),
       },
       ports: ['3306:3306'],
     },
 
   redis_service():: {
-    image: images.default_redis_image,
+    image: $.default_redis_image,
     ports: ['6379:6379'],
   },
 
   pubsub_service():: {
-    image: images.default_pubsub_image,
+    image: $.default_pubsub_image,
     ports: ['8681:8681'],
   },
 
@@ -71,11 +68,11 @@ local misc = import 'misc.jsonnet';
     password='therootpass',
   ):: {
     [name]: {
-      image: images.default_mongodb_image,
+      image: $.default_mongodb_image,
       ports: ['27017:27017'],
       credentials: {
         username: '_json_key',
-        password: misc.secret('docker_gcr_io'),
+        password: $.secret('docker_gcr_io'),
       },
       env: {
         MONGO_INITDB_ROOT_USERNAME: username,
