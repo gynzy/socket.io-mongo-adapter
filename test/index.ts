@@ -477,12 +477,12 @@ describe("@socket.io/mongodb-adapter", () => {
       clientSockets[2].on("test3", partialDone);
 
       await mongoClient.connect();
-      servers[0].to(clientSockets[1].id).emit("test2");
+      servers[0].to(clientSockets[1].id as string).emit("test2");
 
       await sleep(500);
 
-      servers[1].to(clientSockets[2].id).emit("test3");
-      servers[2].to(clientSockets[0].id).emit("test1");
+      servers[1].to(clientSockets[2].id as string).emit("test3");
+      servers[2].to(clientSockets[0].id as string).emit("test1");
     });
   });
 
