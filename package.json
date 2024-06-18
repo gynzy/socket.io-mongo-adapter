@@ -1,6 +1,6 @@
 {
     "name": "@gynzy/mongo-adapter",
-    "version": "0.3.1-gynzy-1",
+    "version": "0.3.1-gynzy-2",
     "description": "The Socket.IO MongoDB adapter, allowing to broadcast events between several Socket.IO servers",
     "license": "MIT",
     "repository": {
@@ -23,7 +23,7 @@
         "mongodb": "*"
     },
     "peerDependencies": {
-        "socket.io-adapter": "^2.5.2"
+        "socket.io-adapter": "^2.5.4"
     },
     "devDependencies": {
         "@types/expect.js": "^0.3.29",
