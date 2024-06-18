@@ -7,7 +7,7 @@ import {
 } from "socket.io-adapter";
 import { randomBytes } from "crypto";
 import { ObjectId, MongoServerError, WithId, Document } from "mongodb";
-import type { Collection, ChangeStream, ResumeToken } from "mongodb";
+import type { Collection, ChangeStream, ChangeStreamOptions } from "mongodb";
 
 const randomId = () => randomBytes(8).toString("hex");
 const debug = require("debug")("socket.io-mongo-adapter");
@@ -161,7 +161,7 @@ export function createAdapter(
   let isClosed = false;
   let adapters = new Map<string, MongoAdapter>();
   let changeStream: ChangeStream;
-  let resumeToken: ResumeToken;
+  let changeStreamOpts: ChangeStreamOptions = {};
 
   const initChangeStream = () => {
     if (isClosed || (changeStream && !changeStream.closed)) {
@@ -178,14 +178,12 @@ export function createAdapter(
           },
         },
       ],
-      {
-        resumeAfter: resumeToken,
-      }
+      changeStreamOpts
     );
 
     changeStream.on("change", (event: any) => {
       if (event.operationType === "insert") {
-        resumeToken = changeStream.resumeToken;
+        changeStreamOpts.resumeAfter = changeStream.resumeToken;
         adapters.get(event.fullDocument?.nsp)?.onEvent(event);
       }
     });
@@ -197,7 +195,7 @@ export function createAdapter(
         !err.hasErrorLabel("ResumableChangeStreamError")
       ) {
         // the resume token was not found in the oplog
-        resumeToken = null;
+        changeStreamOpts = {};
       }
     });
 
@@ -617,6 +615,13 @@ export class MongoAdapter extends Adapter {
   }
 
   public serverCount(): Promise<number> {
+    this.nodesMap.forEach((lastSeen, uid) => {
+      const nodeSeemsDown = Date.now() - lastSeen > this.heartbeatTimeout;
+      if (nodeSeemsDown) {
+        debug("node %s seems down", uid);
+        this.nodesMap.delete(uid);
+      }
+    });
     return Promise.resolve(1 + this.nodesMap.size);
   }
 
@@ -671,20 +676,9 @@ export class MongoAdapter extends Adapter {
     }).catch(onPublishError);
   }
 
-  private getExpectedResponseCount() {
-    this.nodesMap.forEach((lastSeen, uid) => {
-      const nodeSeemsDown = Date.now() - lastSeen > this.heartbeatTimeout;
-      if (nodeSeemsDown) {
-        debug("node %s seems down", uid);
-        this.nodesMap.delete(uid);
-      }
-    });
-    return this.nodesMap.size;
-  }
-
   async fetchSockets(opts: BroadcastOptions): Promise<any[]> {
     const localSockets = await super.fetchSockets(opts);
-    const expectedResponseCount = this.getExpectedResponseCount();
+    const expectedResponseCount = (await this.serverCount()) - 1;
 
     if (opts.flags?.local || expectedResponseCount === 0) {
       return localSockets;
@@ -745,7 +739,7 @@ export class MongoAdapter extends Adapter {
 
   private async serverSideEmitWithAck(packet: any[]) {
     const ack = packet.pop();
-    const expectedResponseCount = this.getExpectedResponseCount();
+    const expectedResponseCount = (await this.serverCount()) - 1;
 
     debug(
       'waiting for %d responses to "serverSideEmit" request',
@@ -812,28 +806,22 @@ export class MongoAdapter extends Adapter {
     try {
       results = await Promise.all([
         // could use a sparse index on [data.pid] (only index the documents whose type is EventType.SESSION)
-        this.mongoCollection.findOneAndDelete({
-          type: EventType.SESSION,
-          "data.pid": pid,
-        }),
+        this.findSession(pid),
         this.mongoCollection.findOne({
           type: EventType.BROADCAST,
           _id: eventOffset,
         }),
       ]);
     } catch (e) {
+      debug("error while fetching session: %s", (e as Error).message);
       return Promise.reject("error while fetching session");
     }
 
-    const result = (results[0]?.ok
-      ? results[0].value // mongodb@5
-      : results[0]) as unknown as WithId<Document>; // mongodb@6
-
-    if (!result || !results[1]) {
+    if (!results[0] || !results[1]) {
       return Promise.reject("session or offset not found");
     }
 
-    const session = result.data;
+    const session = results[0].data;
 
     // could use a sparse index on [_id, nsp, data.opts.rooms, data.opts.except] (only index the documents whose type is EventType.BROADCAST)
     /* addition daniel genis 20231026
@@ -881,5 +869,55 @@ export class MongoAdapter extends Adapter {
     }
 
     return session;
+  }
+
+  private findSession(
+    pid: PrivateSessionId
+  ): Promise<WithId<Document> | undefined> {
+    const isCollectionCapped = !this.addCreatedAtField;
+    if (isCollectionCapped) {
+      return this.mongoCollection
+        .findOne(
+          {
+            type: EventType.SESSION,
+            "data.pid": pid,
+          },
+          {
+            sort: {
+              _id: -1,
+            },
+          }
+        )
+        .then((result) => {
+          if (!result) {
+            debug("session not found");
+            return;
+          }
+
+          if (result.data.sid) {
+            debug("session found, adding tombstone");
+
+            // since the collection is capped, we cannot remove documents from it, so we add a tombstone to prevent recovering the same session twice
+            // note: we could also have used two distinct collections, one for the events (capped) and the other for the sessions (not capped, with a TTL)
+            const TOMBSTONE_SESSION = { pid, tombstone: true };
+            this.persistSession(TOMBSTONE_SESSION);
+
+            return result;
+          } else {
+            debug("tombstone session found");
+          }
+        });
+    } else {
+      return this.mongoCollection
+        .findOneAndDelete({
+          type: EventType.SESSION,
+          "data.pid": pid,
+        })
+        .then((result) => {
+          return result?.ok && result.value
+            ? result.value // mongodb@5
+            : (result as unknown as WithId<Document>); // mongodb@6
+        });
+    }
   }
 }
