@@ -6,6 +6,8 @@
       "uses": "actions/checkout@v3"
       "with":
         "ref": "${{ github.event.pull_request.head.ref }}"
+    - "name": "git safe directory"
+      "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "name": "setup node"
       "uses": "actions/setup-node@v3"
       "with":
@@ -22,7 +24,7 @@
     "timeout-minutes": 30
   "yarn-publish-preview":
     "container":
-      "image": "node:18"
+      "image": "mirror.gcr.io/node:18"
     "permissions":
       "contents": "read"
       "packages": "write"
@@ -33,6 +35,8 @@
       "uses": "actions/checkout@v3"
       "with":
         "ref": "${{ github.event.pull_request.head.sha }}"
+    - "name": "git safe directory"
+      "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "env":
         "NPM_TOKEN": "${{ secrets.npm_token }}"
       "name": "set gynzy npm_token"
