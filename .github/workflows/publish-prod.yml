@@ -9,9 +9,10 @@
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "Check out repository code"
-      "uses": "actions/checkout@v3"
+      "uses": "actions/checkout@v4"
       "with":
         "ref": "${{ github.sha }}"
+        "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
     - "name": "git safe directory"
       "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "env":

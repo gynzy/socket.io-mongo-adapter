@@ -2,11 +2,12 @@ local base = import 'base.jsonnet';
 local images = import 'images.jsonnet';
 
 {
-  checkout(ifClause=null, fullClone=false, ref=null)::
-    local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {});
+  checkout(ifClause=null, fullClone=false, ref=null, sshKey=true)::
+    local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {}) +
+                 (if sshKey then { 'ssh-key': '${{ secrets.VIRKO_GITHUB_SSH_KEY }}' } else {});
     base.action(
       'Check out repository code',
-      'actions/checkout@v3',
+      'actions/checkout@v4',
       with=with,
       ifClause=ifClause
     ) +
@@ -200,9 +201,14 @@ local images = import 'images.jsonnet';
       function(app) std.flatMap(
         function(env)
           if std.isObject(app[env]) then
-            std.map(function(linkName) '[' + app.name + ' ' + env + ' ' + linkName + ' preview](' + app[env][linkName] + ')', std.objectFields(app[env]))
+            std.map(
+              function(linkName)
+                '[' + std.strReplace(std.strReplace(app.name + ' ' + env + ' ' + linkName, '(', ''), ')', '') + ' preview]' +
+                '(' + app[env][linkName] + ')',
+              std.objectFields(app[env])
+            )
           else
-            ['[' + app.name + ' ' + env + ' preview](' + app[env] + ')'],
+            ['[' + std.strReplace(std.strReplace(app.name + ' ' + env, '(', ''), ')', '') + ' preview](' + app[env] + ')'],
 
         app.linkToLinear,
       ),
@@ -374,12 +380,12 @@ local images = import 'images.jsonnet';
         NODESELECTOR_TYPE: cluster.jobNodeSelectorType,
       } + environment,
     ),
-  
+
   // Auto approve PRs made by specific users. Usefull for renovate PRs.
   //
   // Parameters:
   // users: a list of users to auto approve PRs for. Defaults to gynzy-virko.
-  autoApprovePRs(users = ['gynzy-virko'])::
+  autoApprovePRs(users=['gynzy-virko'])::
     base.pipeline(
       'auto-approve-prs',
       [
@@ -392,7 +398,7 @@ local images = import 'images.jsonnet';
             ),
           ],
           useCredentials=false,
-          ifClause='${{ ' + std.join(' || ', std.map(function(user) 'github.actor == \'' + user + '\'', users)) + ' }}',
+          ifClause='${{ ' + std.join(' || ', std.map(function(user) "github.actor == '" + user + "'", users)) + ' }}',
         ),
       ],
       permissions={
