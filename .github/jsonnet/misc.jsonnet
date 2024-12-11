@@ -2,9 +2,8 @@ local base = import 'base.jsonnet';
 local images = import 'images.jsonnet';
 
 {
-  checkout(ifClause=null, fullClone=false, ref=null, sshKey=true)::
-    local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {}) +
-                 (if sshKey then { 'ssh-key': '${{ secrets.VIRKO_GITHUB_SSH_KEY }}' } else {});
+  checkout(ifClause=null, fullClone=false, ref=null)::
+    local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {});
     base.action(
       'Check out repository code',
       'actions/checkout@v4',

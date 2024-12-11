@@ -11,7 +11,6 @@
       "uses": "actions/checkout@v4"
       "with":
         "ref": "${{ github.event.pull_request.head.sha }}"
-        "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
     - "name": "git safe directory"
       "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "name": "remove-workflows"
