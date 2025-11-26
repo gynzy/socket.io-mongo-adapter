@@ -17,4 +17,5 @@
 (import 'complete-workflows.jsonnet') +
 { pnpm: import 'pnpm.jsonnet' } +
 { cache: import 'cache.jsonnet' } +
-{ buckets: import 'buckets.jsonnet' }
+{ buckets: import 'buckets.jsonnet' } +
+{ onePassword: import 'onepassword.jsonnet' }

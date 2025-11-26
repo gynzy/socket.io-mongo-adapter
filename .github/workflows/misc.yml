@@ -67,10 +67,16 @@
     - "name": "git workaround"
       "run": "git config --global --add safe.directory $PWD"
     - "name": "check-jsonnet-diff"
-      "run": "git diff --exit-code"
-    - "if": "failure()"
-      "name": "possible-causes-for-error"
-      "run": "echo \"Possible causes: \n1. You updated jsonnet files, but did not regenerate the workflows. \nTo fix, run 'yarn github:generate' locally and commit the changes. If this helps, check if your pre-commit hooks work.\n2. You used the wrong jsonnet binary. In this case, the newlines at the end of the files differ.\nTo fix, install the go binary. On mac, run 'brew uninstall jsonnet && brew install jsonnet-go'\""
+      "run": |
+        echo "If this step fails, look at the end of the logs for possible causes";
+        git diff --exit-code && exit 0;
+        echo "Error: mismatch between jsonnet <-> github workflows";
+        echo "Possible reasons:";
+        echo " - You updated jsonnet files, but did not regenerate the workflows.";
+        echo "   To regenerate jsonnet run: 'rm .github/workflows/*; jsonnet -m .github/workflows/ -S .github.jsonnet'";
+        echo " - You used the wrong jsonnet binary. In this case, the newlines at the end of the files differ.";
+        echo "   To fix, install the go binary. On mac, run 'brew uninstall jsonnet && brew install go-jsonnet'";
+        exit 1;
     "timeout-minutes": 30
 "name": "misc"
 "on":

@@ -5,7 +5,7 @@
 set -e
 
 if git diff --staged --name-only --quiet -- '*.jsonnet'; then
-  echo "No changes detected, not regenrating gh actions yaml";
+  echo "No changes detected, not regenerating gh actions yaml";
   exit 0;
 
 else

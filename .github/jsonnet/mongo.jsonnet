@@ -27,7 +27,12 @@ local prodProjectSettings = {
 };
 
 {
-  // List of available MongoDB clusters.
+  /**
+   * List of available MongoDB clusters.
+   * 
+   * Each cluster contains configuration for connecting to MongoDB Atlas instances
+   * across different environments (test, production) and services.
+   */
   mongo_clusters: {
     test: testProjectSettings {
       name: 'test',
@@ -70,34 +75,34 @@ local prodProjectSettings = {
   // TODO: remove
   mongo_servers: self.mongo_clusters,
 
-  // Generate a deeplink to the Atlas UI for a given cluster and database.
-  //
-  // If the database is null, the link will point to the cluster overview.
-  // Otherwise, it will point to the database explorer.
-  //
-  // Parameters:
-  // cluster: The MongoDB cluster. One of the objects from the mongo_servers list.
-  // database: The name of the database (optional).
-  //
-  // Returns:
-  // string The deeplink to the Atlas UI.
+  /**
+   * Generate a deeplink to the Atlas UI for a given cluster and database.
+   *
+   * If the database is null, the link will point to the cluster overview.
+   * Otherwise, it will point to the database explorer.
+   *
+   * @param {object} mongoCluster - The MongoDB cluster. One of the objects from the mongo_clusters list
+   * @param {string} [database=null] - The name of the database (optional)
+   * @returns {string} - The deeplink to the Atlas UI
+   */
   atlasDeeplink(mongoCluster, database=null)::
     if database == null || mongoCluster.clusterId == null then
       'https://cloud.mongodb.com/v2/' + mongoCluster.projectId + '#clusters/detail/' + mongoCluster.name
     else
       'https://cloud.mongodb.com/v2/' + mongoCluster.projectId + '#/metrics/replicaSet/' + mongoCluster.clusterId + '/explorer/' + database,
 
-  // Copy a MongoDB database to a new database.
-  // It does this by posting a job that runs the mongo-action image with the clone task.
-  //
-  // Parameters:
-  // service: The name of the service.
-  // mongoCluster: The MongoDB cluster to connect to. One of the objects from the mongo_servers list.
-  // testDatabase: The name of the source database.
-  // prDatabase: The name of the PR database.
-  //
-  // Returns:
-  // The job definition.
+  /**
+   * Copy a MongoDB database to a new database.
+   *
+   * It does this by posting a job that runs the mongo-action image with the clone task.
+   * The target database name must contain '_pr_' for safety.
+   *
+   * @param {string} service - The name of the service
+   * @param {object} mongoCluster - The MongoDB cluster to connect to. One of the objects from the mongo_clusters list
+   * @param {string} testDatabase - The name of the source database
+   * @param {string} prDatabase - The name of the PR database (must contain '_pr_')
+   * @returns {steps} - The job definition for copying the database
+   */
   copyMongoDatabase(service, mongoCluster, testDatabase, prDatabase)::
     assert std.length(std.findSubstr('_pr_', prDatabase)) > 0;  // target db gets deleted. must contain _pr_
 
@@ -124,16 +129,17 @@ local prodProjectSettings = {
       cpuLimit='1',
     ),
 
-  // Delete a MongoDB PR database.
-  // It does this by posting a job that runs the mongo-action image with the delete task.
-  //
-  // Parameters:
-  // service: The name of the service.
-  // mongoCluster: The MongoDB cluster to connect to. One of the objects from the mongo_servers list.
-  // prDatabase: The name of the PR database.
-  //
-  // Returns:
-  // The job definition.
+  /**
+   * Delete a MongoDB PR database.
+   *
+   * It does this by posting a job that runs the mongo-action image with the delete task.
+   * The target database name must contain '_pr_' for safety.
+   *
+   * @param {string} service - The name of the service
+   * @param {object} mongoCluster - The MongoDB cluster to connect to. One of the objects from the mongo_clusters list
+   * @param {string} prDatabase - The name of the PR database to delete (must contain '_pr_')
+   * @returns {steps} - The job definition for deleting the database
+   */
   deleteMongoPrDatabase(service, mongoCluster, prDatabase)::
     assert std.length(std.findSubstr('_pr_', prDatabase)) > 0;  // target db gets deleted. must contain _pr_
 
@@ -152,17 +158,17 @@ local prodProjectSettings = {
         JOB_REQUEST_MEM_LIMIT: '200Mi',
       },
     ),
-  // Sync the indexes of a MongoDB database with the current codebase.
-  //
-  // Parameters:
-  // service: The name of the service.
-  // image: The name of the Docker image to use.
-  // mongoCluster: The MongoDB cluster to connect to. One of the objects from the mongo_servers list.
-  // database: The name of the database.
-  // ifClause: The condition to run the job.
-  //
-  // Returns:
-  // The job definition.
+
+  /**
+   * Sync the indexes of a MongoDB database with the current codebase.
+   *
+   * @param {string} service - The name of the service
+   * @param {string} image - The name of the Docker image to use
+   * @param {object} mongoCluster - The MongoDB cluster to connect to. One of the objects from the mongo_clusters list
+   * @param {string} database - The name of the database
+   * @param {string} [ifClause=null] - The condition to run the job
+   * @returns {steps} - The job definition for syncing database indexes
+   */
   mongoSyncIndexes(service, image, mongoCluster, database, ifClause=null)::
     misc.postJob(
       name='sync-mongo-indexes-' + mongoCluster.name + '-' + database,
@@ -185,17 +191,17 @@ local prodProjectSettings = {
       command='docker/mongo-sync-indexes.sh',
     ),
 
-  // Generate a diff of the indexes of a MongoDB database and the currect codebase.
-  // The diff is posted as a comment on the pull request.
-  //
-  // Parameters:
-  // service: The name of the service.
-  // image: The name of the Docker image to use.
-  // mongoCluster: The MongoDB cluster to connect to. One of the objects from the mongo_servers list.
-  // database: The name of the database.
-  //
-  // Returns:
-  // The job definition.
+  /**
+   * Generate a diff of the indexes of a MongoDB database and the current codebase.
+   *
+   * The diff is posted as a comment on the pull request.
+   *
+   * @param {string} service - The name of the service
+   * @param {string} image - The name of the Docker image to use
+   * @param {object} mongoCluster - The MongoDB cluster to connect to. One of the objects from the mongo_clusters list
+   * @param {string} database - The name of the database
+   * @returns {steps} - The job definition for generating database index diffs
+   */
   mongoDiffIndexes(service, image, mongoCluster, database)::
     local mongoDBLink = self.atlasDeeplink(mongoCluster, database);
 

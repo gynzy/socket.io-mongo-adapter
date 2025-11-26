@@ -2,6 +2,18 @@ local base = import 'base.jsonnet';
 local images = import 'images.jsonnet';
 
 {
+  /**
+   * Creates steps to check out repository code with intelligent SSH/HTTPS fallback.
+   * 
+   * First attempts SSH checkout (if enabled), then falls back to HTTPS if SSH fails.
+   * Automatically installs git/ssh binaries if needed using system (apt/apk) package manager.
+   *
+   * @param {string} [ifClause=null] - Conditional expression for step execution
+   * @param {boolean} [fullClone=false] - Whether to perform full git clone (fetch-depth: 0)
+   * @param {string} [ref=null] - Specific git ref/branch/tag to checkout
+   * @param {boolean} [preferSshClone=true] - Whether to attempt SSH clone first
+   * @returns {steps} - GitHub Actions steps for repository checkout
+   */
   checkout(ifClause=null, fullClone=false, ref=null, preferSshClone=true)::
     local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {});
     local sshSteps = (if (preferSshClone) then
@@ -70,6 +82,14 @@ local images = import 'images.jsonnet';
     else
       self.checkoutWithoutSshMagic(ifClause, fullClone, ref),
 
+  /**
+   * Creates a simple repository checkout without SSH fallback logic.
+   *
+   * @param {string} [ifClause=null] - Conditional expression for step execution
+   * @param {boolean} [fullClone=false] - Whether to perform full git clone (fetch-depth: 0)
+   * @param {string} [ref=null] - Specific git ref/branch/tag to checkout
+   * @returns {steps} - GitHub Actions steps for basic repository checkout
+   */
   checkoutWithoutSshMagic(ifClause=null, fullClone=false, ref=null)::
     local with = (if fullClone then { 'fetch-depth': 0 } else {}) + (if ref != null then { ref: ref } else {});
     base.action(
@@ -80,19 +100,45 @@ local images = import 'images.jsonnet';
     ) +
     base.step('git safe directory', "command -v git && git config --global --add safe.directory '*' || true"),
 
+  /**
+   * Creates a linting step for a specific service using ESLint.
+   *
+   * @param {string} service - Name of the service to lint
+   * @returns {steps} - GitHub Actions step to run ESLint on service files
+   */
   lint(service)::
     base.step('lint-' + service,
               './node_modules/.bin/eslint "./packages/' + service + '/{app,lib,tests,config,addon}/**/*.js" --quiet'),
 
+  /**
+   * Creates a step to lint all code using yarn lint command.
+   *
+   * @returns {steps} - GitHub Actions step to run yarn lint
+   */
   lintAll()::
     base.step('lint', 'yarn lint'),
 
+  /**
+   * Creates a step to verify good-fences architectural boundaries.
+   *
+   * @returns {steps} - GitHub Actions step to run good-fences verification
+   */
   verifyGoodFences()::
     base.step('verify-good-fences', 'yarn run gf'),
 
+  /**
+   * Creates a step to run improved npm audit for security vulnerabilities.
+   *
+   * @returns {steps} - GitHub Actions step to run yarn improved-audit
+   */
   improvedAudit()::
     base.step('audit', 'yarn improved-audit'),
 
+  /**
+   * Creates a complete pipeline to verify jsonnet workflow generation.
+   *
+   * @returns {workflows} - GitHub Actions pipeline that validates jsonnet workflows on pull requests
+   */
   verifyJsonnetWorkflow()::
     base.pipeline(
       'misc',
@@ -102,7 +148,14 @@ local images = import 'images.jsonnet';
       event='pull_request',
     ),
 
-  verifyJsonnet(fetch_upstream=true, runsOn=null)::
+  /**
+   * Creates a GitHub Actions job to verify that jsonnet files generate correct workflows.
+   *
+   * @param {boolean} [fetch_upstream=false] - Whether to fetch the latest lib-jsonnet from upstream (deprecated)
+   * @param {string} [runsOn=null] - Runner type to use for the job
+   * @returns {jobs} - GitHub Actions job that validates jsonnet workflow generation
+   */
+  verifyJsonnet(fetch_upstream=false, runsOn=null)::
     base.ghJob(
       'verify-jsonnet-gh-actions',
       runsOn=runsOn,
@@ -118,19 +171,34 @@ local images = import 'images.jsonnet';
             + [
               base.step('generate-workflows', 'jsonnet -m .github/workflows/ -S .github.jsonnet;'),
               base.step('git workaround', 'git config --global --add safe.directory $PWD'),
-              base.step('check-jsonnet-diff', 'git diff --exit-code'),
               base.step(
-                'possible-causes-for-error',
-                'echo "Possible causes: \n' +
-                '1. You updated jsonnet files, but did not regenerate the workflows. \n' +
-                "To fix, run 'yarn github:generate' locally and commit the changes. If this helps, check if your pre-commit hooks work.\n" +
-                '2. You used the wrong jsonnet binary. In this case, the newlines at the end of the files differ.\n' +
-                'To fix, install the go binary. On mac, run \'brew uninstall jsonnet && brew install jsonnet-go\'"',
-                ifClause='failure()',
+                'check-jsonnet-diff', |||
+                  echo "If this step fails, look at the end of the logs for possible causes";
+                  git diff --exit-code && exit 0;
+                  echo "Error: mismatch between jsonnet <-> github workflows";
+                  echo "Possible reasons:";
+                  echo " - You updated jsonnet files, but did not regenerate the workflows.";
+                  echo "   To regenerate jsonnet run: 'rm .github/workflows/*; jsonnet -m .github/workflows/ -S .github.jsonnet'";
+                  echo " - You used the wrong jsonnet binary. In this case, the newlines at the end of the files differ.";
+                  echo "   To fix, install the go binary. On mac, run 'brew uninstall jsonnet && brew install go-jsonnet'";
+                  exit 1;
+                |||
               ),
             ],
     ),
 
+  /**
+   * Creates a pipeline to automatically update PR descriptions and titles based on templates.
+   *
+   * @param {string} bodyTemplate - Template for the PR body content
+   * @param {string} [titleTemplate=''] - Template for the PR title
+   * @param {string} [baseBranchRegex=null] - Regex to match base branch names
+   * @param {string} [headBranchRegex=null] - Regex to match head branch names
+   * @param {string} [bodyUpdateAction='suffix'] - How to update the body ('suffix', 'prefix', 'replace')
+   * @param {string} [titleUpdateAction='prefix'] - How to update the title ('suffix', 'prefix', 'replace')
+   * @param {object} [otherOptions={}] - Additional options to pass to the action
+   * @returns {workflows} - GitHub Actions pipeline for automatic PR description updates
+   */
   updatePRDescriptionPipeline(
     bodyTemplate,
     titleTemplate='',
@@ -171,16 +239,15 @@ local images = import 'images.jsonnet';
       },
     ),
 
-  // Create a markdown table.
-  //
-  // The headers array and each row array must have the same length.
-  //
-  // Parameters:
-  // headers: a list of headers for the table
-  // rows: a list of rows, where each row is a list of values
-  //
-  // Returns:
-  // a markdown table as a string
+  /**
+   * Generates a markdown table from headers and rows data.
+   *
+   * The headers array and each row array must have the same length.
+   *
+   * @param {array} headers - Array of column header strings
+   * @param {array} rows - Array of row data (each row is an array of cell values)
+   * @returns {string} - Formatted markdown table
+   */
   markdownTable(headers, rows)::
     local renderLine = function(line) '| ' + std.join(' | ', line) + ' |\n';
     local renderedHeader = renderLine(headers) + renderLine(std.map(function(x) '---', headers));
@@ -193,58 +260,54 @@ local images = import 'images.jsonnet';
     );
     renderedHeader + std.join('', renderedRows),
 
-  // Create a collapsable markdown section.
-  //
-  // Parameters:
-  // title: the title of the section
-  // content: the content of the section
-  //
-  // Returns:
-  // a collapsable markdown section as a string
+  /**
+   * Creates a collapsible markdown section using HTML details/summary tags.
+   *
+   * @param {string} title - Title text for the collapsible section
+   * @param {string} content - Content to display when expanded
+   * @returns {string} - HTML details element with markdown content
+   */
   markdownCollapsable(title, content)::
     '<details>\n' +
     '<summary>' + title + '</summary>\n\n' +
     content + '\n' +
     '</details>\n',
 
-  // Create a markdown table with preview links.
-  //
-  // Parameters:
-  // environments: a list of environment names
-  // apps: a list of apps, where each app is an object with the following fields:
-  //   - name: the name of the app
-  //   - linkToLinear: a list of environment names for which to create a preview link in Linear
-  //   - environment names: the environment links
-  //     - the key is the environment name
-  //     - the value is the link, or an object with the link name as the key and the link as the value. This is useful for multiple links per environment.
-  //
-  // Returns:
-  // a markdown table with preview links as a string
-  //
-  // Example:
-  // misc.previewLinksTable(
-  //   ['pr', 'acceptance', 'test', 'prod'],
-  //   [
-  //     {
-  //       name: 'app1',
-  //       pr: 'https://pr-link',
-  //       acceptance: 'https://acceptance-link',
-  //       test: 'https://test-link',
-  //       prod: 'https://prod-link',
-  //     },
-  //     {
-  //       name: 'app2',
-  //       linkToLinear: ['pr', 'acceptance'],
-  //       pr: 'https://pr-link',
-  //       acceptance: 'https://acceptance-link',
-  //       test: 'https://test-link',
-  //       prod: {
-  //         prod-nl: 'https://prod-link/nl',
-  //         prod-en: 'https://prod-link/en',
-  //       },
-  //     },
-  //   ],
-  // )
+  /**
+   * Creates a markdown table with preview links for different environments.
+   *
+   * @param {array} environments - Array of environment names
+   * @param {array} apps - Array of app objects with the following fields:
+   *   - name: The name of the app
+   *   - linkToLinear: Array of environment names for which to create preview links in Linear
+   *   - [environment]: The environment links (key is environment name, value is link or object with multiple links)
+   * @returns {string} - Markdown table with preview links and collapsible Linear links section
+   *
+   * @example
+   * misc.previewLinksTable(
+   *   ['pr', 'acceptance', 'test', 'prod'],
+   *   [
+   *     {
+   *       name: 'app1',
+   *       pr: 'https://pr-link',
+   *       acceptance: 'https://acceptance-link',
+   *       test: 'https://test-link',
+   *       prod: 'https://prod-link',
+   *     },
+   *     {
+   *       name: 'app2',
+   *       linkToLinear: ['pr', 'acceptance'],
+   *       pr: 'https://pr-link',
+   *       acceptance: 'https://acceptance-link',
+   *       test: 'https://test-link',
+   *       prod: {
+   *         'prod-nl': 'https://prod-link/nl',
+   *         'prod-en': 'https://prod-link/en',
+   *       },
+   *     },
+   *   ],
+   * )
+   */
   previewLinksTable(environments, apps)::
     local headers = ['Application'] + environments;
     local rows = std.map(
@@ -283,13 +346,38 @@ local images = import 'images.jsonnet';
     );
     self.markdownTable(headers, rows) + self.markdownCollapsable('Linear links', std.join('\n', linearLinks)),
 
+  /**
+   * Creates a shortened service name by removing common prefixes.
+   *
+   * @param {string} name - Full service name
+   * @returns {string} - Shortened service name without 'service-' prefix
+   */
   shortServiceName(name)::
     assert name != null;
     std.strReplace(std.strReplace(name, 'gynzy-', ''), 'unicorn-', ''),
 
+  /**
+   * Creates a reference to a GitHub repository secret.
+   *
+   * @param {string} secretName - Name of the secret in GitHub repository settings
+   * @returns {string} - GitHub Actions expression to access the secret
+   */
   secret(secretName)::
     '${{ secrets.' + secretName + ' }}',
 
+  /**
+   * Creates a step to poll a URL until it returns expected content.
+   *
+   * Useful for verifying that deployments are healthy and serving correct content.
+   *
+   * @param {string} url - URL to poll for content verification
+   * @param {string} expectedContent - Content expected to be found in the response
+   * @param {string} [name='verify-deploy'] - Name of the verification step
+   * @param {string} [attempts='100'] - Maximum number of polling attempts
+   * @param {string} [interval='2000'] - Interval between attempts in milliseconds
+   * @param {string} [ifClause=null] - Conditional expression for step execution
+   * @returns {steps} - GitHub Actions step that polls URL until content matches
+   */
   pollUrlForContent(url, expectedContent, name='verify-deploy', attempts='100', interval='2000', ifClause=null)::
     base.action(
       name,
@@ -303,6 +391,14 @@ local images = import 'images.jsonnet';
       ifClause=ifClause,
     ),
 
+  /**
+   * Creates a scheduled pipeline to automatically clean up old branches.
+   *
+   * Runs weekly on Monday at 12:00 UTC to remove branches older than 3 months.
+   *
+   * @param {string} [protectedBranchRegex='^(main|master|gynzy|upstream)$'] - Regex pattern for branches to protect from deletion
+   * @returns {workflows} - GitHub Actions pipeline scheduled to clean up old branches
+   */
   cleanupOldBranchesPipelineCron(protectedBranchRegex='^(main|master|gynzy|upstream)$')::
     base.pipeline(
       'purge-old-branches',
@@ -310,12 +406,13 @@ local images = import 'images.jsonnet';
         base.ghJob(
           'purge-old-branches',
           useCredentials=false,
+          image=null,
+          runsOn='ubuntu-latest',
           steps=[
-            base.step('setup', 'apk add git bash'),
-            self.checkout(),
+            base.action('checkout', 'actions/checkout@v4'),
             base.action(
               'Run delete-old-branches-action',
-              'beatlabs/delete-old-branches-action@6e94df089372a619c01ae2c2f666bf474f890911',
+              'beatlabs/delete-old-branches-action@4eeeb8740ff8b3cb310296ddd6b43c3387734588',
               with={
                 repo_token: '${{ github.token }}',
                 date: '3 months ago',
@@ -337,34 +434,31 @@ local images = import 'images.jsonnet';
       },
     ),
 
-  // Test if the changed files match the given glob patterns.
-  // Can test for multiple pattern groups, and sets multiple outputs.
-  //
-  // Parameters:
-  // changedFiles: a map of grouped glob patterns to test against.
-  //   The map key is the name of the group.
-  //   The map value is a list of glob patterns (as string, can use * and **) to test against.
-  //
-  // Outputs:
-  // steps.changes.outputs.<group>: true if the group matched, false otherwise
-  //
-  // Permissions:
-  // Requires the 'pull-requests': 'read' permission
-  //
-  // Example:
-  // misc.testForChangedFiles({
-  //   'app': ['packages/*/app/**/*', 'package.json'],
-  //   'lib': ['packages/*/lib/**/*'],
-  // })
-  //
-  // This will set the following outputs:
-  // - steps.changes.outputs.app: true if any of the changed files match the patterns in the 'app' group
-  // - steps.changes.outputs.lib: true if any of the changed files match the patterns in the 'lib' group
-  //
-  // These can be tested as in an if clause as follows:
-  // if: steps.changes.outputs.app == 'true'
-  //
-  // See https://github.com/dorny/paths-filter for more information.
+  /**
+   * Creates a step to test if changed files match the given glob patterns.
+   *
+   * Can test for multiple pattern groups and sets multiple outputs.
+   * Requires the 'pull-requests': 'read' permission.
+   *
+   * @param {object} changedFiles - Map of grouped glob patterns to test against
+   *   - Key: Name of the group
+   *   - Value: Array of glob patterns (can use * and **) to test against
+   * @param {string} [headRef=null] - Head commit reference (defaults to current)
+   * @param {string} [baseRef=null] - Base commit reference (defaults to target branch)
+   * @returns {steps} - GitHub Actions step that sets outputs: steps.changes.outputs.<group>
+   *
+   * @example
+   * misc.testForChangedFiles({
+   *   'app': ['packages/star/app/doublestar/star', 'package.json'],
+   *   'lib': ['packages/star/lib/doublestar/star'],
+   * })
+   *
+   * // This sets outputs that can be tested in if clauses:
+   * // if: steps.changes.outputs.app == 'true'
+   *
+   * // Note: Replace 'star' with '*' and 'doublestar' with '**' in actual usage
+   * // See https://github.com/dorny/paths-filter for more information.
+   */
   testForChangedFiles(changedFiles, headRef=null, baseRef=null)::
     [
       base.step('git safe directory', 'git config --global --add safe.directory $PWD'),
@@ -383,15 +477,15 @@ local images = import 'images.jsonnet';
       ),
     ],
 
-  // Wait for the given jobs to finish.
-  // Exits successfully if all jobs are successful, otherwise exits with an error.
-  //
-  // Parameters:
-  // name: the name of the github job
-  // jobs: a list of job names to wait for
-  //
-  // Returns:
-  // a job that waits for the given jobs to finish
+  /**
+   * Creates a job that waits for given jobs to finish.
+   *
+   * Exits successfully if all jobs are successful, otherwise exits with an error.
+   *
+   * @param {string} name - The name of the GitHub job
+   * @param {array} jobs - Array of job objects to wait for
+   * @returns {jobs} - GitHub Actions job that waits for the given jobs to finish
+   */
   awaitJob(name, jobs)::
     local dependingJobs = std.flatMap(
       function(job)
@@ -420,20 +514,22 @@ local images = import 'images.jsonnet';
       ),
     ],
 
-  // Post a job to a kubernetes cluster
-  //
-  // Parameters:
-  // name: the name of the github job
-  // jobName: the name of the job to be posted
-  // cluster: the cluster to post the job to. This should be an object from the clusters module
-  // image: the image to use for the job
-  // environment: a map of environment variables to pass to the job
-  // command: the command to run in the job (optional)
-  // ifClause: the condition under which to run the job (optional)
-  // memory: the memory requested for the job (optional)
-  // memoryLimit: the memory limit for the job (optional)
-  // cpu: the cpu requested for the job (optional)
-  // cpuLimit: the cpu limit for the job (optional)
+  /**
+   * Creates a Kubernetes job that runs a container with specified resources.
+   *
+   * @param {string} name - Display name for the GitHub Actions step
+   * @param {string} jobName - Kubernetes job name (must be unique)
+   * @param {object} cluster - Target Kubernetes cluster configuration
+   * @param {string} image - Docker image to run in the job
+   * @param {object} environment - Environment variables for the container
+   * @param {string} [command=''] - Command to run in the container
+   * @param {string} [ifClause=null] - Conditional expression for step execution
+   * @param {string} [memory='100Mi'] - Memory request for the container
+   * @param {string} [memoryLimit='100Mi'] - Memory limit for the container
+   * @param {string} [cpu='100m'] - CPU request for the container
+   * @param {string} [cpuLimit='100m'] - CPU limit for the container
+   * @returns {steps} - GitHub Actions step that creates and monitors Kubernetes job
+   */
   postJob(name, jobName, cluster, image, environment, command='', ifClause=null, memory='100Mi', memoryLimit='100Mi', cpu='100m', cpuLimit='100m')::
     base.action(
       name,
@@ -457,10 +553,14 @@ local images = import 'images.jsonnet';
       } + environment,
     ),
 
-  // Auto approve PRs made by specific users. Usefull for renovate PRs.
-  //
-  // Parameters:
-  // users: a list of users to auto approve PRs for. Defaults to gynzy-virko.
+  /**
+   * Creates a pipeline to auto-approve PRs made by specific users.
+   *
+   * Useful for automatically approving renovate PRs or other trusted automation.
+   *
+   * @param {array} [users=['gynzy-virko']] - Array of usernames to auto-approve PRs for
+   * @returns {workflows} - GitHub Actions pipeline that auto-approves PRs from specified users
+   */
   autoApprovePRs(users=['gynzy-virko'])::
     base.pipeline(
       'auto-approve-prs',
@@ -483,5 +583,70 @@ local images = import 'images.jsonnet';
       event={
         pull_request: { types: ['opened'] },
       },
+    ),
+
+  /**
+   * Creates a step to obtain a mutex lock for mutual exclusion within a repository.
+   *
+   * Most commonly used to gate Pulumi since it does its own locking but does not wait for the lock.
+   *
+   * @param {string} [lockName='lock'] - The name of the lock (branch used for locking)
+   * @param {string} [lockTimeout='1200'] - How long to wait for the lock in seconds (defaults to 20 minutes)
+   * @returns {steps} - GitHub Actions step that acquires a mutex lock
+   */
+  getLockStep(
+    lockName='lock',
+    lockTimeout="1200", // seconds
+  )::
+    base.action(
+      'get mutex lock',
+      'gynzy/gh-action-mutex@main',
+      with={
+        branch: lockName,
+        timeout: lockTimeout,
+      },
+    ),
+
+  /**
+   * Creates a step to install the 1Password CLI tool.
+   *
+   * @param {string} [version='v2.31.1'] - Version of the 1Password CLI to install
+   * @returns {steps} - GitHub Actions step that installs 1Password CLI
+   */
+  install1Password(
+    version='v2.31.1',
+  )::
+    base.step(
+      'Install 1Password CLI',
+      |||
+        OP_INSTALL_DIR="$(mktemp -d)"
+        curl -sSfLo op.zip "https://cache.agilebits.com/dist/1P/op2/pkg/${OP_CLI_VERSION}/op_linux_${ARCH}_${OP_CLI_VERSION}.zip"
+        unzip -od "$OP_INSTALL_DIR" op.zip && rm op.zip
+        echo "$OP_INSTALL_DIR" >> "$GITHUB_PATH"
+      |||,
+      env = {
+        OP_CLI_VERSION: version,
+        ARCH: 'amd64'
+      }
+    ),
+
+  /**
+   * Creates a step to configure Google Cloud authentication.
+   * Also configures Docker registry access.
+   *
+   * @param {string} secret - Google Cloud service account JSON secret
+   * @returns {steps} - Array containing a single step object
+   */
+  configureGoogleAuth(secret)::
+    base.step(
+      'activate google service account',
+      run=
+      |||
+        printf '%s' "${SERVICE_JSON}" > gce.json;
+        gcloud auth activate-service-account --key-file=gce.json;
+        gcloud --quiet auth configure-docker;
+        rm gce.json
+      |||,
+      env={ SERVICE_JSON: secret },
     ),
 }

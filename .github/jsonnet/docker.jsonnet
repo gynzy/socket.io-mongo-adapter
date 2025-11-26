@@ -15,7 +15,7 @@ local misc = import 'misc.jsonnet';
    * @param {object} [env] - Environment variables to be passed to the Docker build.
    * @param {object} [build_args] - Build arguments to be passed to the Docker build.
    * @param {string} [project] - The GCP project where the image will be store/pushed to.
-   * @returns {[object]} - a github actions step to build the docker image
+   * @returns {steps} - a github actions step to build the docker image
    */
   buildDocker(
     imageName,
