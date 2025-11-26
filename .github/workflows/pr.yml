@@ -64,14 +64,15 @@
       "with":
         "mongodb-replica-set": "rs0"
         "mongodb-version": 5
-    - "name": "yarn"
+    - "env": {}
+      "name": "yarn"
       "run": "yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline || yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline"
     - "name": "test"
       "run": "yarn test"
     "timeout-minutes": 30
   "yarn-publish-preview":
     "container":
-      "image": "mirror.gcr.io/node:18"
+      "image": "mirror.gcr.io/node:22"
     "permissions":
       "contents": "read"
       "packages": "write"
@@ -136,11 +137,11 @@
       "name": "set gynzy npm_token"
       "run": |
         cat <<EOF > .npmrc
-        registry=https://npm.gynzy.net/
-        always-auth="true"
+        @gynzy:registry=https://npm.gynzy.net/
         "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
         EOF
-    - "name": "yarn"
+    - "env": {}
+      "name": "yarn"
       "run": "yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline || yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline"
     - "name": "build"
       "run": "yarn build"
@@ -149,8 +150,7 @@
       "name": "set gynzy npm_token"
       "run": |
         cat <<EOF > .npmrc
-        registry=https://npm.gynzy.net/
-        always-auth="true"
+        @gynzy:registry=https://npm.gynzy.net/
         "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
         EOF
     - "env":

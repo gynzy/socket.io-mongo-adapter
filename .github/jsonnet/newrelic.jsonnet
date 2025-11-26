@@ -4,15 +4,27 @@ local misc = import 'misc.jsonnet';
 local yarn = import 'yarn.jsonnet';
 
 {
+  /**
+   * Creates a GitHub Actions job to post deployment information to New Relic.
+   *
+   * @param {array} apps - Array of application objects containing deployment information
+   * @param {string} [cacheName=null] - Name of the cache to use for yarn dependencies
+   * @param {string} [source='gynzy'] - Registry source ('gynzy' or 'github') for npm packages
+   * @param {string} [image='mirror.gcr.io/node:20.17'] - Docker image to use for the job
+   * @param {boolean} [useCredentials=false] - Whether to use Docker registry credentials
+   * @returns {jobs} - GitHub Actions job definition for New Relic deployment notification
+   */
   postReleaseToNewRelicJob(
     apps,
     cacheName=null,
     source='gynzy',
+    image='mirror.gcr.io/node:20.17',
+    useCredentials=false,
   )::
     base.ghJob(
       'post-newrelic-release',
-      image='mirror.gcr.io/node:20.17',
-      useCredentials=false,
+      image=image,
+      useCredentials=useCredentials,
       ifClause="${{ github.event.deployment.environment == 'production' }}",
       steps=[
         yarn.checkoutAndYarn(ref='${{ github.sha }}', cacheName=cacheName, source=source),

@@ -7,6 +7,27 @@ local notifications = import 'notifications.jsonnet';
 local servicesImport = import 'services.jsonnet';
 
 {
+  /**
+   * Creates a complete PR deployment pipeline for Ruby/Rails applications.
+   *
+   * Handles Docker image building, database cloning, migrations, and Helm deployment
+   * for pull request environments with automatic cleanup.
+   *
+   * @param {string} serviceName - Name of the Ruby service
+   * @param {string} [dockerImageName='backend-' + serviceName] - Docker image name to build
+   * @param {object} [helmDeployOptions] - Helm deployment configuration
+   * @param {object} helmDeployOptions.ingress - Ingress configuration
+   * @param {object} helmDeployOptions.cronjob - Cronjob configuration
+   * @param {object} [mysqlCloneOptions={}] - Database cloning options for PR isolation
+   * @param {boolean} mysqlCloneOptions.enabled - Whether to clone database for PR
+   * @param {string} mysqlCloneOptions.database_name_target - Target PR database name
+   * @param {string} mysqlCloneOptions.database_name_source - Source database to clone
+   * @param {object} [migrateOptions={}] - Rails migration options
+   * @param {boolean} migrateOptions.enabled - Whether to run migrations
+   * @param {string} migrateOptions.RAILS_ENV - Rails environment
+   * @param {string} rubyImageName - Ruby base image for the job (required)
+   * @returns {workflows} - Complete GitHub Actions pipeline for Ruby PR deployment
+   */
   rubyDeployPRPipeline(
     serviceName,
     dockerImageName='backend-' + serviceName,
@@ -67,6 +88,17 @@ local servicesImport = import 'services.jsonnet';
       event='pull_request',
     ),
 
+  /**
+   * Creates steps to run Rails database migrations and seeding.
+   *
+   * @param {object} migrateOptions - Rails migration configuration
+   * @param {string} migrateOptions.RAILS_DB_HOST - Database host
+   * @param {string} migrateOptions.RAILS_DB_NAME - Database name
+   * @param {string} migrateOptions.RAILS_DB_PASSWORD - Database password
+   * @param {string} migrateOptions.RAILS_DB_USER - Database user
+   * @param {string} migrateOptions.SECRET_KEY_BASE - Rails secret key
+   * @returns {steps} - GitHub Actions steps for bundle install, migrate, and seed
+   */
   rubyMigrate(migrateOptions)::
     local env = {
       BUNDLE_GITHUB__COM: misc.secret('BUNDLE_GITHUB__COM'),
@@ -86,12 +118,25 @@ local servicesImport = import 'services.jsonnet';
     ]
   ,
 
+  /**
+   * Creates a job to generate and deploy API documentation for Ruby applications.
+   *
+   * Generates Rails API docs and uploads them to Google Cloud Storage for hosting.
+   *
+   * @param {string} serviceName - Name of the service for documentation
+   * @param {boolean} [enableDatabase=false] - Whether to enable database service
+   * @param {string} [generateCommands=null] - Custom commands for doc generation
+   * @param {object} [extra_env={}] - Additional environment variables
+   * @param {object} [services] - Database services configuration
+   * @param {string} rubyImageName - Ruby base image for the job (required)
+   * @returns {jobs} - GitHub Actions job for API documentation deployment
+   */
   deployApiDocs(
     serviceName,
     enableDatabase=false,
     generateCommands=null,
     extra_env={},
-    services={ db: servicesImport.mysql57service(database='ci', password='ci', root_password='1234test', username='ci') },
+    services={ db: servicesImport.mysql8service(database='ci', password='ci', root_password='1234test', username='ci', version='8.4') },
     rubyImageName=null,
   )::
     assert rubyImageName != null;
@@ -132,12 +177,30 @@ local servicesImport = import 'services.jsonnet';
       services=(if enableDatabase then services else null),
     ),
 
+  /**
+   * Creates a step to set version information in a file.
+   *
+   * @param {string} [version='${{ github.event.pull_request.head.sha }}'] - Version string to write
+   * @param {string} [file='VERSION'] - Target file for version information
+   * @returns {steps} - GitHub Actions step that writes version to file
+   */
   setVerionFile(version='${{ github.event.pull_request.head.sha }}', file='VERSION')::
     base.step(
       'set-version',
       'echo "' + version + '" > ' + file + ';\n        echo "Generated version number:";\n        cat ' + file + ';\n      '
     ),
 
+  /**
+   * Creates a pipeline to automatically clean up PR deployments when PRs are closed.
+   *
+   * @param {string} serviceName - Name of the Ruby service to clean up
+   * @param {object} [options={}] - Helm cleanup options
+   * @param {string} [helmPath='./helm/' + serviceName] - Path to Helm chart
+   * @param {string} [deploymentName=serviceName + '-pr-${{ github.event.number }}'] - PR deployment name
+   * @param {object} [mysqlDeleteOptions={}] - Database cleanup options
+   * @param {boolean} mysqlDeleteOptions.enabled - Whether to delete PR database
+   * @returns {workflows} - GitHub Actions pipeline for automatic PR cleanup
+   */
   rubyDeletePRPipeline(
     serviceName,
     options={},
@@ -165,6 +228,18 @@ local servicesImport = import 'services.jsonnet';
       },
     ),
 
+  /**
+   * Creates a GitHub Actions job for Ruby application deployment to test environment.
+   *
+   * @param {string} serviceName - Name of the Ruby service
+   * @param {object} [options={}] - Helm deployment options
+   * @param {string} [helmPath='./helm/' + serviceName] - Path to Helm chart
+   * @param {string} [deploymentName=serviceName + '-master'] - Test deployment name
+   * @param {string} image - Container image for the job (required)
+   * @param {boolean} [useCredentials=false] - Whether to use Docker registry credentials
+   * @param {object} [migrateOptions={}] - Rails migration options
+   * @returns {jobs} - GitHub Actions job for test environment deployment
+   */
   rubyDeployTestJob(
     serviceName,
     options={},
@@ -198,6 +273,20 @@ local servicesImport = import 'services.jsonnet';
                (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': servicesImport.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
     ),
 
+  /**
+   * Creates a GitHub Actions job for Ruby application deployment to production.
+   *
+   * Includes automatic failure notifications via Slack on deployment errors.
+   *
+   * @param {string} serviceName - Name of the Ruby service
+   * @param {object} [options={}] - Helm deployment options
+   * @param {string} [helmPath='./helm/' + serviceName] - Path to Helm chart
+   * @param {string} [deploymentName=serviceName + '-prod'] - Production deployment name
+   * @param {string} image - Container image for the job (required)
+   * @param {boolean} [useCredentials=false] - Whether to use Docker registry credentials
+   * @param {object} [migrateOptions={}] - Rails migration options
+   * @returns {jobs} - GitHub Actions job for production deployment with failure notifications
+   */
   rubyDeployProdJob(
     serviceName,
     options={},

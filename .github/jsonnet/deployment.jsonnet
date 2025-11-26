@@ -4,51 +4,65 @@ local misc = import 'misc.jsonnet';
 local notifications = import 'notifications.jsonnet';
 
 {
+  /**
+   * Internal function to assert that a merge SHA is the latest commit on a branch.
+   *
+   * Prevents creating a deployment event for a closed PR whose code is considered merged, but not the latest commit.
+   * For a more detailed explanation see `masterMergeDeploymentEventHook()`.
+   *
+   * @param {string} branch - The target branch to check
+   * @param {string} [sha='${{ github.sha }}'] - The SHA to verify
+   * @param {string} [repository='${{ github.repository }}'] - The repository to check
+   * @returns {steps} - GitHub Actions steps to verify merge SHA is latest
+   * @private
+   */
   _assertMergeShaIsLatestCommit(branch, sha='${{ github.sha }}', repository='${{ github.repository }}')::
-    [
-      base.step('install jq curl', 'apk add --no-cache jq curl'),
-      base.step(
-        'assert merge sha is latest commit',
-        |||
-          HEAD_SHA=$(curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/${TARGET_BRANCH} | jq -r .commit.sha);
-          if [ ${HEAD_SHA} == ${PR_MERGE_COMMIT_SHA} ]; then
-            echo "Merge sha is latest commit on branch ${TARGET_BRANCH}! HEAD_SHA: ${HEAD_SHA} PR_MERGE_COMMIT_SHA: ${PR_MERGE_COMMIT_SHA}";
-            echo "CREATE_DEPLOY_EVENT=true" >> $GITHUB_OUTPUT
-          else
-            echo "Merge sha is not latest commit on branch ${TARGET_BRANCH}! HEAD_SHA: ${HEAD_SHA} PR_MERGE_COMMIT_SHA: ${PR_MERGE_COMMIT_SHA}";
-            echo "CREATE_DEPLOY_EVENT=false" >> $GITHUB_OUTPUT
-          fi
-        |||,
-        env={
-          PR_MERGE_COMMIT_SHA: sha,
-          GITHUB_REPOSITORY: repository,
-          TARGET_BRANCH: branch,
-          GITHUB_TOKEN: '${{ github.token }}',
-        },
-        id='assert-merge-sha-is-latest-commit',
-      ),
-    ],
+    base.step('install jq curl', 'apk add --no-cache jq curl') +
+    base.step(
+      'assert merge sha is latest commit',
+      |||
+        HEAD_SHA=$(curl -L -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${GITHUB_TOKEN}" -H "X-GitHub-Api-Version: 2022-11-28" https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/${TARGET_BRANCH} | jq -r .commit.sha);
+        if [ ${HEAD_SHA} == ${PR_MERGE_COMMIT_SHA} ]; then
+          echo "Merge sha is latest commit on branch ${TARGET_BRANCH}! HEAD_SHA: ${HEAD_SHA} PR_MERGE_COMMIT_SHA: ${PR_MERGE_COMMIT_SHA}";
+          echo "CREATE_DEPLOY_EVENT=true" >> $GITHUB_OUTPUT
+        else
+          echo "Merge sha is not latest commit on branch ${TARGET_BRANCH}! HEAD_SHA: ${HEAD_SHA} PR_MERGE_COMMIT_SHA: ${PR_MERGE_COMMIT_SHA}";
+          echo "CREATE_DEPLOY_EVENT=false" >> $GITHUB_OUTPUT
+        fi
+      |||,
+      env={
+        PR_MERGE_COMMIT_SHA: sha,
+        GITHUB_REPOSITORY: repository,
+        TARGET_BRANCH: branch,
+        GITHUB_TOKEN: '${{ github.token }}',
+      },
+      id='assert-merge-sha-is-latest-commit',
+    ),
 
-  /*
-   * Creates a production deployment event on pr-close if all of the following conditions are met:
-   * - the pr is merged
-   * - the pr is merged into the default branch
-   * - the merge sha is the latest commit on the default branch.
-   *   this prevents a deployment from beeing created in a specific edge case:
-   *   - PR A is merged into PR B
-   *   - PR B is merged into the default branch
-   *   - now github closes both PRs and without this additional sanity check, both would create a deploy event
+
+  /**
+   * Creates a production deployment event on PR close if all conditions are met.
    *
-   * For more complex deployment scenarios, use the branchMergeDeploymentEventHook instead
+   * Conditions:
+   * - The PR is merged
+   * - The PR is merged into the default branch
+   * - The merge SHA is the latest commit on the default branch
    *
-   * params:
-   *   deployToTest {boolean} - if true, a deployment event is also created for the test environment
-   *   prodBranch {string|null} - the branch to deploy to production. defaults to the default branch of the repository. but can be set to a differring release branch
-   *   testBranch {string|null} - the branch to deploy to test. defaults to the default branch of the repository. but can be set to a differring test branch
-   *   extraDeployTargets {string[]} - deploy targets to create deployment events for. defaults to ['production']. these targets will triger based on the configured prodBranch
-   *   runsOn {string|null} - the name of the runner to run this job on. defaults to null, which will later on means the default self hosted runner will be used
-   *   notifyOnTestDeploy {boolean} - if true, a slack message is sent when a test deployment is created
-  */
+   * This prevents deployments from being created in edge cases where:
+   * - PR A is merged into PR B
+   * - PR B is merged into the default branch
+   * - Both PRs would create deploy events without this sanity check
+   *
+   * For more complex deployment scenarios, use the branchMergeDeploymentEventHook instead.
+   *
+   * @param {boolean} [deployToTest=false] - If true, a deployment event is also created for the test environment
+   * @param {string} [prodBranch=null] - The branch to deploy to production. Defaults to the default branch of the repository, but can be set to a different release branch
+   * @param {string} [testBranch=null] - The branch to deploy to test. Defaults to the default branch of the repository, but can be set to a different test branch
+   * @param {array} [deployTargets=['production']] - Deploy targets to create deployment events for. These targets will trigger based on the configured prodBranch
+   * @param {string} [runsOn=null] - The name of the runner to run this job on. Defaults to null, which means the default self-hosted runner will be used
+   * @param {boolean} [notifyOnTestDeploy=false] - If true, a Slack message is sent when a test deployment is created
+   * @returns {workflows} - GitHub Actions pipeline for deployment event creation on PR merge
+   */
   masterMergeDeploymentEventHook(deployToTest=false, prodBranch=null, testBranch=null, deployTargets=['production'], runsOn=null, notifyOnTestDeploy=false)::
     local branches = [
       {
@@ -66,24 +80,25 @@ local notifications = import 'notifications.jsonnet';
 
     self.branchMergeDeploymentEventHook(branches, runsOn=runsOn),
 
-
-  /*
-   * Creates a production deployment event on pr-close if all of the following conditions are met:
-   * - the pr is merged
-   * - the pr is merged into the default branch
-   * - the merge sha is the latest commit on the default branch.
-   *   this prevents a deployment from beeing created in a specific edge case:
-   *   - PR A is merged into PR B
-   *   - PR B is merged into the default branch
-   *   - now github closes both PRs and without this additional sanity check, both would create a deploy event
+  /**
+   * Creates deployment events on PR close for multiple branches with different deployment targets.
    *
-   * params:
-   *   branches {{branch: string, deployments: string[], notifyOnDeploy: boolean}[]} - an array of the branches to create deployment events for.
-   *     Each branch object has the following properties:
-   *       branch {string} - the branch to which the PR has to be merged into. If '_default_' is used, the default branch of the repository is used.
-   *       deployments {string[]} - the environments to deploy to. e.g. ['production', 'test']
-   *       notifyOnDeploy {boolean} - if true, a slack message is sent when a deployment is created
-   *   runsOn {string|null} - the name of the runner to run this job on. defaults to null, which will later on means the default self hosted runner will be used
+   * Conditions:
+   * - The PR is merged
+   * - The PR is merged into one of the configured branches
+   * - The merge SHA is the latest commit on the target branch
+   *
+   * This prevents deployments from being created in edge cases where:
+   * - PR A is merged into PR B
+   * - PR B is merged into the target branch
+   * - Both PRs would create deploy events without this sanity check
+   *
+   * @param {array} branches - Array of branch objects to create deployment events for
+   * @param {string} branches[].branch - The branch to which the PR has to be merged. If '_default_' is used, the default branch of the repository is used
+   * @param {array} branches[].deployments - The environments to deploy to (e.g., ['production', 'test'])
+   * @param {boolean} branches[].notifyOnDeploy - If true, a Slack message is sent when a deployment is created
+   * @param {string} [runsOn=null] - The name of the runner to run this job on. Defaults to null, which means the default self-hosted runner will be used
+   * @returns {workflows} - GitHub Actions pipeline for deployment event creation on PR merge to multiple branches
    */
   branchMergeDeploymentEventHook(branches, runsOn=null)::
     base.pipeline(
@@ -101,8 +116,8 @@ local notifications = import 'notifications.jsonnet';
             useCredentials=false,
             runsOn=runsOn,
             permissions={ deployments: 'write', contents: 'read' },
-            ifClause="${{ github.event.pull_request.merged == true}}",
-            steps=self._assertMergeShaIsLatestCommit(branch=branchName) +
+            ifClause='${{ github.event.pull_request.merged == true}}',
+            steps=[self._assertMergeShaIsLatestCommit(branch=branchName)] +
                   std.map(
                     function(deploymentTarget)
                       base.action(
@@ -141,9 +156,29 @@ local notifications = import 'notifications.jsonnet';
       },
     ),
 
-  /*
-   * Generate a github ifClause for the provided deployment targets:
+  /**
+   * Generate a GitHub ifClause for the provided deployment targets.
+   *
+   * @param {array} targets - Array of deployment target environment names
+   * @returns {string} - GitHub Actions conditional expression that matches any of the provided targets
    */
   deploymentTargets(targets)::
     '${{ ' + std.join(' || ', std.map(function(target) "github.event.deployment.environment == '" + target + "'", targets)) + ' }}',
+
+  /**
+   * Creates a step to update deployment status (success/failure) based on the result from the current job
+   *
+   * @returns {jobs} - GitHub Actions step that updates deployment status
+   */
+  updateDeploymentStatus(status='${{ job.status }}')::
+    base.action(
+      'Update deployment status',
+      'chrnorm/deployment-status@v2',
+      with={
+        state: status,
+        ['deployment-id']: '${{ github.event.deployment.id }}',
+        token: '${{ secrets.GITHUB_TOKEN }}',
+      },
+      ifClause='${{ always() }}',
+    ),
 }

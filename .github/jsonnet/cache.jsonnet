@@ -1,21 +1,26 @@
 local base = import 'base.jsonnet';
 
 {
-  // Fetch a cache from the cache server.
-  // This is a generic function that can be used to fetch any cache. It is advised to wrap this function
-  // in a more specific function that fetches a specific cache, setting the cacheName and folders parameters.
-  //
-  // To be paired with the uploadCache function.
-  //
-  // Parameters:
-  // cacheName: The name of the cache to fetch. The name of the repository is usually a good option. Required.
-  // backupCacheName: The name of a backup cache to fetch if the main cache fails. Default is null.
-  // folders: A list of folders that are in the cache. These will be deleted if the download fails. Can be an empty list if additionalCleanupCommands are used.
-  // additionalCleanupCommands: A list of additional commands to run if the download fails. Default is an empty list.
-  // ifClause: An optional if clause to conditionally run this step. Default is null.
-  // workingDirectory: The working directory for this step. Default is null.
-  // retry: Whether to retry the download if it fails. Default is true.
-  // continueWithoutCache: Whether to continue if the cache is not found. Default is true.
+  /**
+   * Fetch a cache from the cache server.
+   * 
+   * This is a generic function that can be used to fetch any cache. It is advised to wrap this function
+   * in a more specific function that fetches a specific cache, setting the cacheName and folders parameters.
+   * 
+   * To be paired with the uploadCache function.
+   *
+   * @param {string} cacheName - The name of the cache to fetch. The name of the repository is usually a good option.
+   * @param {string} [backupCacheName=null] - The name of a backup cache to fetch if the main cache fails.
+   * @param {array} [folders=[]] - A list of folders that are in the cache. These will be deleted if the download fails. Can be an empty list if additionalCleanupCommands are used.
+   * @param {string} [version='v1'] - The version of the cache to fetch.
+   * @param {string} [backupCacheVersion=version] - The version of the backup cache to fetch.
+   * @param {array} [additionalCleanupCommands=[]] - A list of additional commands to run if the download fails.
+   * @param {string} [ifClause=null] - An optional if clause to conditionally run this step.
+   * @param {string} [workingDirectory=null] - The working directory for this step.
+   * @param {boolean} [retry=true] - Whether to retry the download if it fails.
+   * @param {boolean} [continueWithoutCache=true] - Whether to continue if the cache is not found.
+   * @returns {steps} - GitHub Actions step to download cache from Google Cloud Storage
+   */
   fetchCache(
     cacheName,
     backupCacheName=null,
@@ -75,17 +80,21 @@ local base = import 'base.jsonnet';
       workingDirectory=workingDirectory,
     ),
 
-  // Uploads a cache to the cache server.
-  // This is a generic function that can be used to upload any cache. It is advised to wrap this function
-  // in a more specific function that uploads a specific cache, setting the cacheName and folders parameters.
-  //
-  // To be paired with the fetchCache function.
-  //
-  // Parameters:
-  // cacheName: The name of the cache to upload. The name of the repository is usually a good option. Required.
-  // folders: A list of folders to include in the cache. Required unless tarCommand is given.
-  // compressionLevel: The compression level to use for zstd. Default is 10.
-  // tarCommand: The command to run to create the tar file. Default is 'tar -c ' + std.join(' ', folders).
+  /**
+   * Uploads a cache to the cache server.
+   * 
+   * This is a generic function that can be used to upload any cache. It is advised to wrap this function
+   * in a more specific function that uploads a specific cache, setting the cacheName and folders parameters.
+   * 
+   * To be paired with the fetchCache function.
+   *
+   * @param {string} cacheName - The name of the cache to upload. The name of the repository is usually a good option.
+   * @param {array} [folders=null] - A list of folders to include in the cache. Required unless tarCommand is given.
+   * @param {string} [version='v1'] - The version of the cache to upload.
+   * @param {number} [compressionLevel=10] - The compression level to use for zstd.
+   * @param {string} [tarCommand='tar -c ' + std.join(' ', folders)] - The command to run to create the tar file.
+   * @returns {steps} - GitHub Actions step to upload cache to Google Cloud Storage with zstd compression
+   */
   uploadCache(
     cacheName,
     folders=null,
@@ -110,13 +119,16 @@ local base = import 'base.jsonnet';
       'echo "Upload finished"\n'
     ),
 
-  // Removes a cache from the cache server.
-  // This is a generic function that can be used to remove any cache. It is advised to wrap this function
-  // in a more specific function that removes a specific cache, setting the cacheName parameter.
-  //
-  // Parameters:
-  // cacheName: The name of the cache to remove. The name of the repository is usually a good option. Required.
-  // version: The version of the cache to remove. Default is 'v1'.
+  /**
+   * Removes a cache from the cache server.
+   * 
+   * This is a generic function that can be used to remove any cache. It is advised to wrap this function
+   * in a more specific function that removes a specific cache, setting the cacheName parameter.
+   *
+   * @param {string} cacheName - The name of the cache to remove. The name of the repository is usually a good option.
+   * @param {string} [version='v1'] - The version of the cache to remove.
+   * @returns {steps} - GitHub Actions step to remove cache from Google Cloud Storage
+   */
   removeCache(cacheName, version='v1')::
     base.step(
       'remove ' + cacheName + ' cache',
