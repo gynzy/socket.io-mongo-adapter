@@ -79,7 +79,7 @@ local servicesImport = import 'services.jsonnet';
                     },
                     build_args='BUNDLE_GITHUB__COM=' + misc.secret('BUNDLE_GITHUB__COM'),
                   ),
-                  helm.helmDeployPR(serviceName, helmDeployOptions),
+                  helm.helmDeployPR(serviceName, helmDeployOptions, wait=true),
                 ],
           services={} +
                    (if mysqlCloneOptionsWithDefaults.enabled then { 'cloudsql-proxy': servicesImport.cloudsql_proxy_service(mysqlCloneOptionsWithDefaults.database) } else {})
@@ -238,6 +238,8 @@ local servicesImport = import 'services.jsonnet';
    * @param {string} image - Container image for the job (required)
    * @param {boolean} [useCredentials=false] - Whether to use Docker registry credentials
    * @param {object} [migrateOptions={}] - Rails migration options
+   * @param {bool} wait [true] - let helm wait for pods to come online otherwise fail the job
+   * @param {timeout}  [10m] - how long to wait until the pods come online
    * @returns {jobs} - GitHub Actions job for test environment deployment
    */
   rubyDeployTestJob(
@@ -248,6 +250,8 @@ local servicesImport = import 'services.jsonnet';
     image=null,
     useCredentials=false,
     migrateOptions={},
+    wait=true,
+    timeout='10m',
   )::
     assert image != null;
     local migrateOptionsWithDefaults = {
@@ -268,7 +272,7 @@ local servicesImport = import 'services.jsonnet';
       steps=
       [misc.checkout()] +
       (if migrateOptionsWithDefaults.enabled then self.rubyMigrate(migrateOptionsWithDefaults) else []) +
-      [helm.helmDeployTest(serviceName, options, helmPath, deploymentName)],
+      [helm.helmDeployTest(serviceName, options, helmPath, deploymentName, wait=wait, timeout=timeout)],
       services={} +
                (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': servicesImport.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
     ),
@@ -285,6 +289,8 @@ local servicesImport = import 'services.jsonnet';
    * @param {string} image - Container image for the job (required)
    * @param {boolean} [useCredentials=false] - Whether to use Docker registry credentials
    * @param {object} [migrateOptions={}] - Rails migration options
+   * @param {bool} wait [true] - let helm wait for pods to come online otherwise fail the job
+   * @param {timeout}  [10m] - how long to wait until the pods come online
    * @returns {jobs} - GitHub Actions job for production deployment with failure notifications
    */
   rubyDeployProdJob(
@@ -295,6 +301,8 @@ local servicesImport = import 'services.jsonnet';
     image=null,
     useCredentials=false,
     migrateOptions={},
+    wait=true,
+    timeout='10m',
   )::
     assert image != null;
     local migrateOptionsWithDefaults = {
@@ -314,7 +322,7 @@ local servicesImport = import 'services.jsonnet';
       useCredentials=useCredentials,
       steps=[misc.checkout()] +
             (if migrateOptionsWithDefaults.enabled then self.rubyMigrate(migrateOptionsWithDefaults) else []) +
-            [helm.helmDeployProd(serviceName, options, helmPath, deploymentName)] + [notifications.notifiyDeployFailure()],
+            [helm.helmDeployProd(serviceName, options, helmPath, deploymentName, wait=wait, timeout=timeout)] + [notifications.notifiyDeployFailure()],
       services={} +
                (if migrateOptionsWithDefaults.enabled then { 'cloudsql-proxy': servicesImport.cloudsql_proxy_service(migrateOptionsWithDefaults.database) } else {})
     ),

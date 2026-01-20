@@ -1,3 +1,4 @@
+# GENERATED with jsonnet - DO NOT EDIT MANUALLY
 "jobs":
   "test":
     "runs-on": "ubuntu-latest"
@@ -139,6 +140,7 @@
         cat <<EOF > .npmrc
         @gynzy:registry=https://npm.gynzy.net/
         "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
+        public-hoist-pattern[]=@pulumi/pulumi
         EOF
     - "env": {}
       "name": "yarn"
@@ -152,6 +154,7 @@
         cat <<EOF > .npmrc
         @gynzy:registry=https://npm.gynzy.net/
         "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
+        public-hoist-pattern[]=@pulumi/pulumi
         EOF
     - "env":
         "PR_NUMBER": "${{ github.event.number }}"
