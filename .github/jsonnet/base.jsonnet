@@ -14,6 +14,7 @@ local misc = import 'misc.jsonnet';
    */
   pipeline(name, jobs, event=['pull_request'], permissions=null, concurrency=null):: {
     [name + '.yml']:
+      '# GENERATED with jsonnet - DO NOT EDIT MANUALLY\n' +
       std.manifestYamlDoc(
         {
           name: name,

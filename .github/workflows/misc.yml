@@ -1,3 +1,4 @@
+# GENERATED with jsonnet - DO NOT EDIT MANUALLY
 "jobs":
   "verify-jsonnet-gh-actions":
     "container":

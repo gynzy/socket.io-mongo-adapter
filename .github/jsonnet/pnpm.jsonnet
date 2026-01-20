@@ -87,7 +87,7 @@ local yarn = import 'yarn.jsonnet';
        prod=prod,
        args=pnpmInstallArgs,
        workingDirectory=workingDirectory,
-       storeDir=(if cacheName != null then '.pnpm-store' else null),
+       storeDir='.pnpm-store',
      ) else
        self.installPackages(
          ifClause=ifClause,

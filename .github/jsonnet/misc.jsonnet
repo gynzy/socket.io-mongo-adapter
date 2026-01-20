@@ -124,7 +124,7 @@ local images = import 'images.jsonnet';
    * @returns {steps} - GitHub Actions step to run good-fences verification
    */
   verifyGoodFences()::
-    base.step('verify-good-fences', 'yarn run gf'),
+    base.step('verify-good-fences', 'pnpm run gf'),
 
   /**
    * Creates a step to run improved npm audit for security vulnerabilities.

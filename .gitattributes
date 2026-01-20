@@ -1,0 +1,2 @@
+.github/workflows/** linguist-generated
+.github/jsonnet/** linguist-vendored
