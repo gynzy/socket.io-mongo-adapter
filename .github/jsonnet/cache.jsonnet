@@ -120,21 +120,25 @@ local base = import 'base.jsonnet';
     ),
 
   /**
-   * Removes a cache from the cache server.
-   * 
+   * Removes a cache from the cache server and optionally removes local folders.
+   *
    * This is a generic function that can be used to remove any cache. It is advised to wrap this function
    * in a more specific function that removes a specific cache, setting the cacheName parameter.
    *
    * @param {string} cacheName - The name of the cache to remove. The name of the repository is usually a good option.
    * @param {string} [version='v1'] - The version of the cache to remove.
+   * @param {array} [folders=[]] - Local folders to delete alongside the remote cache.
+   * @param {string} [ifClause=null] - An optional if clause to conditionally run this step.
    * @returns {steps} - GitHub Actions step to remove cache from Google Cloud Storage
    */
-  removeCache(cacheName, version='v1')::
+  removeCache(cacheName, version='v1', folders=[], ifClause=null)::
     base.step(
       'remove ' + cacheName + ' cache',
       run=
       'set +e;\n' +
+      (if std.length(folders) > 0 then 'rm -rf ' + std.join(' ', folders) + '\n' else '') +
       'gsutil rm "gs://files-gynzy-com-test/ci-cache/' + cacheName + '-' + version + '.tar.zst"\n' +
-      'echo "Cache removed"\n'
+      'echo "Cache removed"\n',
+      ifClause=ifClause,
     ),
 }

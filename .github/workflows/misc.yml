@@ -5,7 +5,7 @@
       "credentials":
         "password": "${{ secrets.docker_gcr_io }}"
         "username": "_json_key"
-      "image": "europe-docker.pkg.dev/unicorn-985/private-images/docker-images_jsonnet:v1"
+      "image": "europe-docker.pkg.dev/unicorn-985/private-images/docker-images_jsonnet:v2"
     "runs-on": "ubuntu-latest"
     "steps":
     - "id": "check-binaries"
@@ -50,15 +50,17 @@
         echo "sshBinaryExists=false" >> $GITHUB_OUTPUT;
     - "if": "${{  ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}"
       "name": "Check out repository code via ssh"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
       "with":
         "ref": "${{ github.event.pull_request.head.sha }}"
         "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
+        "submodules": "recursive"
     - "if": "${{  ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}"
       "name": "Check out repository code via https"
-      "uses": "actions/checkout@v4"
+      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
       "with":
         "ref": "${{ github.event.pull_request.head.sha }}"
+        "submodules": "recursive"
     - "name": "git safe directory"
       "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "name": "remove-workflows"
@@ -75,8 +77,9 @@
         echo "Possible reasons:";
         echo " - You updated jsonnet files, but did not regenerate the workflows.";
         echo "   To regenerate jsonnet run: 'rm .github/workflows/*; jsonnet -m .github/workflows/ -S .github.jsonnet'";
-        echo " - You used the wrong jsonnet binary. In this case, the newlines at the end of the files differ.";
-        echo "   To fix, install the go binary. On mac, run 'brew uninstall jsonnet && brew install go-jsonnet'";
+        echo " - You used the wrong jsonnet binary (version). In this case, the newlines at the end of the files differ.";
+        echo " - You must use go-jsonnet version 0.22 or higher. Earlier versions do not generate the yml with trailing newline."
+        echo "   To fix, install the go binary (^0.22). On mac, run 'brew uninstall jsonnet && brew install go-jsonnet'";
         exit 1;
     "timeout-minutes": 30
 "name": "misc"
