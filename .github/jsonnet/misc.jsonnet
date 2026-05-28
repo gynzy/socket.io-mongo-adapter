@@ -14,13 +14,20 @@ local images = import 'images.jsonnet';
    * @param {string} [ref=null] - Specific git ref/branch/tag to checkout
    * @param {boolean} [preferSshClone=true] - Whether to attempt SSH clone first
    * @param {boolean} [includeSubmodules=true] - Whether to checkout git submodules
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses default (false)
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses default (0)
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses default (10)
    * @returns {steps} - GitHub Actions steps for repository checkout
    */
-  checkout(ifClause=null, fullClone=false, ref=null, preferSshClone=true, includeSubmodules=true)::
+  checkout(ifClause=null, fullClone=false, ref=null, preferSshClone=true, includeSubmodules=true, blobless=null, retryAttempts=null, cloneTimeout=null)::
+    local actualBlobless = if blobless == null then false else blobless;
+    local actualRetryAttempts = if retryAttempts == null then 0 else retryAttempts;
+    local actualCloneTimeout = if cloneTimeout == null then 10 else cloneTimeout;
     local with =
       (if fullClone then { 'fetch-depth': 0 } else {}) +
       (if ref != null then { ref: ref } else {}) +
-      (if includeSubmodules then { submodules: 'recursive' } else {});
+      (if includeSubmodules then { submodules: 'recursive' } else {}) +
+      (if actualBlobless then { filter: 'blob:none' } else {});
     local sshSteps = (if (preferSshClone) then
                         base.step(
                           'check for ssh/git binaries',
@@ -68,20 +75,40 @@ local images = import 'images.jsonnet';
 
     // strip the ${{ }} from the IfClause so we can inject and add our own if clause
     local localIfClause = (if ifClause == null then null else std.strReplace(std.strReplace(ifClause, '${{ ', ''), ' }}', ''));
+    local userIfPart = if ifClause == null then '' else '( ' + localIfClause + ' ) && ';
+
+    // Generate `retryAttempts + 1` attempts of the same checkout action. Each non-final attempt
+    // sets continue-on-error so the workflow proceeds to the next attempt; retries are gated on
+    // the previous attempt's outcome being 'failure'.
+    local retrySteps(name, withParams, baseIf, idPrefix) = std.flatMap(
+      function(i)
+        local isLast = (i == actualRetryAttempts);
+        local previousFailed = if i == 0 then '' else " && steps." + idPrefix + (i - 1) + ".outcome == 'failure'";
+        base.action(
+          name + (if i == 0 then '' else ' (retry ' + i + ')'),
+          actions.checkout_action,
+          with=withParams,
+          id=idPrefix + i,
+          ifClause='${{ ' + userIfPart + '( ' + baseIf + ' )' + previousFailed + ' }}',
+          timeoutMinutes=actualCloneTimeout,
+          continueOnError=(if isLast then null else true),
+        ),
+      std.range(0, actualRetryAttempts)
+    );
 
     if (preferSshClone) then
       sshSteps +
-      base.action(
+      retrySteps(
         'Check out repository code via ssh',
-        actions.checkout_action,
-        with=with + (if preferSshClone then { 'ssh-key': '${{ secrets.VIRKO_GITHUB_SSH_KEY }}' } else {}),
-        ifClause='${{ ' + (if ifClause == null then '' else '( ' + localIfClause + ' ) && ') + " ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}",
+        with + { 'ssh-key': '${{ secrets.VIRKO_GITHUB_SSH_KEY }}' },
+        "steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true'",
+        'checkout-ssh-',
       ) +
-      base.action(
+      retrySteps(
         'Check out repository code via https',
-        actions.checkout_action,
-        with=with,
-        ifClause='${{ ' + (if ifClause == null then '' else '( ' + localIfClause + ' ) && ') + " ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}",
+        with,
+        "steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false'",
+        'checkout-https-',
       ) +
       base.step('git safe directory', "command -v git && git config --global --add safe.directory '*' || true")
     else

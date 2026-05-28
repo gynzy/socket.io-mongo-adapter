@@ -93,10 +93,13 @@ local misc = import 'misc.jsonnet';
    * @param {string} [workingDirectory=null] - Directory to run operations in
    * @param {string} [source='gynzy'] - Registry source ('gynzy' or 'github')
    * @param {boolean} [ignoreEngines=false] - Whether to ignore engine version checks
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {steps} - Array of step objects for the complete workflow
    */
-  checkoutAndYarn(cacheName=null, ifClause=null, fullClone=false, ref=null, prod=false, workingDirectory=null, source='gynzy', ignoreEngines=false)::
-    misc.checkout(ifClause=ifClause, fullClone=fullClone, ref=ref) +
+  checkoutAndYarn(cacheName=null, ifClause=null, fullClone=false, ref=null, prod=false, workingDirectory=null, source='gynzy', ignoreEngines=false, blobless=null, retryAttempts=null, cloneTimeout=null)::
+    misc.checkout(ifClause=ifClause, fullClone=fullClone, ref=ref, blobless=blobless, retryAttempts=retryAttempts, cloneTimeout=cloneTimeout) +
     (if source == 'gynzy' then self.setGynzyNpmToken(ifClause=ifClause, workingDirectory=workingDirectory) else []) +
     (if source == 'github' then self.setGithubNpmToken(ifClause=ifClause, workingDirectory=workingDirectory) else []) +
     (if cacheName == null then [] else self.fetchYarnCache(cacheName, ifClause=ifClause, workingDirectory=workingDirectory)) +
