@@ -1,81 +1,8 @@
 # GENERATED with jsonnet - DO NOT EDIT MANUALLY
 "jobs":
-  "test":
-    "runs-on": "ubuntu-latest"
-    "steps":
-    - "id": "check-binaries"
-      "name": "check for ssh/git binaries"
-      "run": |
-        if command -v git;
-          then
-            echo "gitBinaryExists=true" >> $GITHUB_OUTPUT;
-            echo "Git binary exists";
-          else
-            echo "Attempt to install git binary";
-            if command -v apk; then
-              echo "apk exists";
-              apk add git && echo "gitBinaryExists=true" >> $GITHUB_OUTPUT;
-            elif command -v apt; then
-              echo "apt exists";
-              apt update && apt install -y git && echo "gitBinaryExists=true" >> $GITHUB_OUTPUT;
-            else
-              echo "No package manager found, unable to install git cli binary";
-              echo "gitBinaryExists=false" >> $GITHUB_OUTPUT;
-            fi;
-        fi;
-        
-        if command -v ssh;
-          then
-            echo "sshBinaryExists=true" >> $GITHUB_OUTPUT;
-            echo "SSH binary exists";
-            exit 0;
-          else
-            echo "Attempt to install ssh binary";
-            if command -v apk; then
-              echo "apk exists";
-              apk add openssh-client && echo "sshBinaryExists=true" >> $GITHUB_OUTPUT && exit 0;
-            elif command -v apt; then
-              echo "apt exists";
-              apt update && apt install -y openssh-client && echo "sshBinaryExists=true" >> $GITHUB_OUTPUT && exit 0;
-            else
-              echo "No package manager found, unable to install ssh cli binary";
-              echo "sshBinaryExists=false" >> $GITHUB_OUTPUT;
-            fi;
-        fi;
-        echo "sshBinaryExists=false" >> $GITHUB_OUTPUT;
-    - "if": "${{  ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}"
-      "name": "Check out repository code via ssh"
-      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
-      "with":
-        "ref": "${{ github.event.pull_request.head.ref }}"
-        "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
-        "submodules": "recursive"
-    - "if": "${{  ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}"
-      "name": "Check out repository code via https"
-      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
-      "with":
-        "ref": "${{ github.event.pull_request.head.ref }}"
-        "submodules": "recursive"
-    - "name": "git safe directory"
-      "run": "command -v git && git config --global --add safe.directory '*' || true"
-    - "name": "setup node"
-      "uses": "actions/setup-node@v3"
-      "with":
-        "node-version": 18
-    - "name": "Start MongoDB"
-      "uses": "supercharge/mongodb-github-action@v1"
-      "with":
-        "mongodb-replica-set": "rs0"
-        "mongodb-version": 5
-    - "env": {}
-      "name": "yarn"
-      "run": "yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline || yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline"
-    - "name": "test"
-      "run": "yarn test"
-    "timeout-minutes": 30
-  "yarn-publish-preview":
+  "pnpm-publish-preview":
     "container":
-      "image": "mirror.gcr.io/node:22"
+      "image": "mirror.gcr.io/node:24"
     "permissions":
       "contents": "read"
       "packages": "write"
@@ -122,15 +49,19 @@
             fi;
         fi;
         echo "sshBinaryExists=false" >> $GITHUB_OUTPUT;
-    - "if": "${{  ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}"
+    - "id": "checkout-ssh-0"
+      "if": "${{ ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}"
       "name": "Check out repository code via ssh"
+      "timeout-minutes": 10
       "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
       "with":
         "ref": "${{ github.event.pull_request.head.sha }}"
         "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
         "submodules": "recursive"
-    - "if": "${{  ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}"
+    - "id": "checkout-https-0"
+      "if": "${{ ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}"
       "name": "Check out repository code via https"
+      "timeout-minutes": 10
       "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
       "with":
         "ref": "${{ github.event.pull_request.head.sha }}"
@@ -146,11 +77,16 @@
         "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
         public-hoist-pattern[]=@pulumi/pulumi
         EOF
-    - "env": {}
-      "name": "yarn"
-      "run": "yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline || yarn --cache-folder .yarncache --frozen-lockfile --prefer-offline"
+    - "name": "Install pnpm tool"
+      "uses": "pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320"
+    - "name": "Run pnpm install"
+      "run": "pnpm config set store-dir .pnpm-store && pnpm install --frozen-lockfile"
+    - "name": "check-version-bump"
+      "uses": "del-systems/check-if-version-bumped@d5d13ffd75dc8aa9c2e1dca10d9bb27be10307b2"
+      "with":
+        "token": "${{ github.token }}"
     - "name": "build"
-      "run": "yarn build"
+      "run": "pnpm run build"
     - "env":
         "NPM_TOKEN": "${{ secrets.npm_token }}"
       "name": "set gynzy npm_token"
@@ -168,7 +104,7 @@
         
         cp package.json package.json.bak;
         
-        VERSION=$(yarn version --non-interactive 2>/dev/null | grep "Current version" | grep -o -P '[0-9a-zA-Z_.-]+$' );
+        VERSION=$(node -p "require(\"./package.json\").version");
         if [[ ! -z "${PR_NUMBER}" ]]; then
           echo "Setting tag/version for pr build.";
           TAG=pr-$PR_NUMBER;
@@ -189,10 +125,137 @@
           exit 1
         fi
         
-        yarn publish --non-interactive --no-git-tag-version --tag "$TAG" --new-version "$PUBLISHVERSION";
+        npm version --no-git-tag-version --allow-same-version "$PUBLISHVERSION";
+        pnpm publish --no-git-checks --tag "$TAG";
         
         mv package.json.bak package.json;
         ';
+    - "env":
+        "NODE_AUTH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+      "name": "set github npm_token"
+      "run": |
+        cat <<EOF > .npmrc
+        @gynzy:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+        public-hoist-pattern[]=@pulumi/pulumi
+        EOF
+    - "env":
+        "PR_NUMBER": "${{ github.event.number }}"
+      "name": "publish"
+      "run": |
+        bash -c 'set -xeo pipefail;
+        
+        cp package.json package.json.bak;
+        
+        VERSION=$(node -p "require(\"./package.json\").version");
+        if [[ ! -z "${PR_NUMBER}" ]]; then
+          echo "Setting tag/version for pr build.";
+          TAG=pr-$PR_NUMBER;
+          PUBLISHVERSION="$VERSION-pr$PR_NUMBER.$GITHUB_RUN_NUMBER";
+        elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+          if [[ "${GITHUB_REF_NAME}" != "${VERSION}" ]]; then
+            echo "Tag version does not match package version. They should match. Exiting";
+            exit 1;
+          fi
+          echo "Setting tag/version for release/tag build.";
+          PUBLISHVERSION=$VERSION;
+          TAG="latest";
+        elif [[ "${GITHUB_REF_TYPE}" == "branch" && ( "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "master" ) ]] || [[ "${GITHUB_EVENT_NAME}" == "deployment" ]]; then
+          echo "Setting tag/version for release/tag build.";
+          PUBLISHVERSION=$VERSION;
+          TAG="latest";
+        else
+          exit 1
+        fi
+        
+        npm version --no-git-tag-version --allow-same-version "$PUBLISHVERSION";
+        pnpm publish --no-git-checks --tag "$TAG";
+        
+        mv package.json.bak package.json;
+        ';
+    "timeout-minutes": 30
+  "test":
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "id": "check-binaries"
+      "name": "check for ssh/git binaries"
+      "run": |
+        if command -v git;
+          then
+            echo "gitBinaryExists=true" >> $GITHUB_OUTPUT;
+            echo "Git binary exists";
+          else
+            echo "Attempt to install git binary";
+            if command -v apk; then
+              echo "apk exists";
+              apk add git && echo "gitBinaryExists=true" >> $GITHUB_OUTPUT;
+            elif command -v apt; then
+              echo "apt exists";
+              apt update && apt install -y git && echo "gitBinaryExists=true" >> $GITHUB_OUTPUT;
+            else
+              echo "No package manager found, unable to install git cli binary";
+              echo "gitBinaryExists=false" >> $GITHUB_OUTPUT;
+            fi;
+        fi;
+        
+        if command -v ssh;
+          then
+            echo "sshBinaryExists=true" >> $GITHUB_OUTPUT;
+            echo "SSH binary exists";
+            exit 0;
+          else
+            echo "Attempt to install ssh binary";
+            if command -v apk; then
+              echo "apk exists";
+              apk add openssh-client && echo "sshBinaryExists=true" >> $GITHUB_OUTPUT && exit 0;
+            elif command -v apt; then
+              echo "apt exists";
+              apt update && apt install -y openssh-client && echo "sshBinaryExists=true" >> $GITHUB_OUTPUT && exit 0;
+            else
+              echo "No package manager found, unable to install ssh cli binary";
+              echo "sshBinaryExists=false" >> $GITHUB_OUTPUT;
+            fi;
+        fi;
+        echo "sshBinaryExists=false" >> $GITHUB_OUTPUT;
+    - "id": "checkout-ssh-0"
+      "if": "${{ ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}"
+      "name": "Check out repository code via ssh"
+      "timeout-minutes": 10
+      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+      "with":
+        "ref": "${{ github.event.pull_request.head.sha }}"
+        "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
+        "submodules": "recursive"
+    - "id": "checkout-https-0"
+      "if": "${{ ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}"
+      "name": "Check out repository code via https"
+      "timeout-minutes": 10
+      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+      "with":
+        "ref": "${{ github.event.pull_request.head.sha }}"
+        "submodules": "recursive"
+    - "name": "git safe directory"
+      "run": "command -v git && git config --global --add safe.directory '*' || true"
+    - "env":
+        "NPM_TOKEN": "${{ secrets.npm_token }}"
+      "name": "set gynzy npm_token"
+      "run": |
+        cat <<EOF > .npmrc
+        @gynzy:registry=https://npm.gynzy.net/
+        "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
+        public-hoist-pattern[]=@pulumi/pulumi
+        EOF
+    - "name": "Install pnpm tool"
+      "uses": "pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320"
+    - "name": "Run pnpm install"
+      "run": "pnpm config set store-dir .pnpm-store && pnpm install"
+    - "name": "Start MongoDB"
+      "uses": "supercharge/mongodb-github-action@v1"
+      "with":
+        "mongodb-replica-set": "rs0"
+        "mongodb-version": 5
+    - "name": "test"
+      "run": "pnpm test"
     "timeout-minutes": 30
 "name": "pr"
 "on":
