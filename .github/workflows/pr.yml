@@ -69,12 +69,12 @@
     - "name": "git safe directory"
       "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "env":
-        "NPM_TOKEN": "${{ secrets.npm_token }}"
-      "name": "set gynzy npm_token"
+        "NODE_AUTH_TOKEN": "${{ secrets.VIRKO_GITHUB_PKG_READONLY }}"
+      "name": "set github npm_token"
       "run": |
         cat <<EOF > .npmrc
-        @gynzy:registry=https://npm.gynzy.net/
-        "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
+        @gynzy:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
         public-hoist-pattern[]=@pulumi/pulumi
         EOF
     - "name": "Install pnpm tool"
@@ -87,49 +87,6 @@
         "token": "${{ github.token }}"
     - "name": "build"
       "run": "pnpm run build"
-    - "env":
-        "NPM_TOKEN": "${{ secrets.npm_token }}"
-      "name": "set gynzy npm_token"
-      "run": |
-        cat <<EOF > .npmrc
-        @gynzy:registry=https://npm.gynzy.net/
-        "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
-        public-hoist-pattern[]=@pulumi/pulumi
-        EOF
-    - "env":
-        "PR_NUMBER": "${{ github.event.number }}"
-      "name": "publish"
-      "run": |
-        bash -c 'set -xeo pipefail;
-        
-        cp package.json package.json.bak;
-        
-        VERSION=$(node -p "require(\"./package.json\").version");
-        if [[ ! -z "${PR_NUMBER}" ]]; then
-          echo "Setting tag/version for pr build.";
-          TAG=pr-$PR_NUMBER;
-          PUBLISHVERSION="$VERSION-pr$PR_NUMBER.$GITHUB_RUN_NUMBER";
-        elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-          if [[ "${GITHUB_REF_NAME}" != "${VERSION}" ]]; then
-            echo "Tag version does not match package version. They should match. Exiting";
-            exit 1;
-          fi
-          echo "Setting tag/version for release/tag build.";
-          PUBLISHVERSION=$VERSION;
-          TAG="latest";
-        elif [[ "${GITHUB_REF_TYPE}" == "branch" && ( "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "master" ) ]] || [[ "${GITHUB_EVENT_NAME}" == "deployment" ]]; then
-          echo "Setting tag/version for release/tag build.";
-          PUBLISHVERSION=$VERSION;
-          TAG="latest";
-        else
-          exit 1
-        fi
-        
-        npm version --no-git-tag-version --allow-same-version "$PUBLISHVERSION";
-        pnpm publish --no-git-checks --tag "$TAG";
-        
-        mv package.json.bak package.json;
-        ';
     - "env":
         "NODE_AUTH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
       "name": "set github npm_token"
@@ -237,12 +194,12 @@
     - "name": "git safe directory"
       "run": "command -v git && git config --global --add safe.directory '*' || true"
     - "env":
-        "NPM_TOKEN": "${{ secrets.npm_token }}"
-      "name": "set gynzy npm_token"
+        "NODE_AUTH_TOKEN": "${{ secrets.VIRKO_GITHUB_PKG_READONLY }}"
+      "name": "set github npm_token"
       "run": |
         cat <<EOF > .npmrc
-        @gynzy:registry=https://npm.gynzy.net/
-        "//npm.gynzy.net/:_authToken"="${NPM_TOKEN}"
+        @gynzy:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
         public-hoist-pattern[]=@pulumi/pulumi
         EOF
     - "name": "Install pnpm tool"

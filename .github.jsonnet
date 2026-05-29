@@ -1,7 +1,7 @@
 local util = (import '.github/jsonnet/index.jsonnet');
 
 util.workflowJavascriptPackage(
-  repositories=['gynzy', 'github'],
+  repositories=['github'],
   packageManager='pnpm',
   branch='main',
   isPublicFork=true,
@@ -13,7 +13,6 @@ util.workflowJavascriptPackage(
     steps=[
       util.pnpm.checkoutAndPnpm(
         ref='${{ github.event.pull_request.head.sha }}',
-        source='gynzy',
       ),
       util.action(
         'Start MongoDB',

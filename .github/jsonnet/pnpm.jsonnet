@@ -62,7 +62,7 @@ local yarn = import 'yarn.jsonnet';
    * @param {string} [ref=null] - Git ref to checkout (branch, tag, or commit)
    * @param {boolean} [prod=false] - Whether to install only production dependencies
    * @param {string} [workingDirectory=null] - Directory to run operations in
-   * @param {string} [source='gynzy'] - Registry source ('gynzy' or 'github')
+   * @param {string} [source='github'] - Registry source ('gynzy' or 'github')
    * @param {array} [pnpmInstallArgs=[]] - Additional arguments for pnpm install command
    * @param {boolean} [setupPnpm=true] - Whether to set up and install pnpm itself before installing all packages
    * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
@@ -77,7 +77,7 @@ local yarn = import 'yarn.jsonnet';
     ref=null,
     prod=false,
     workingDirectory=null,
-    source='gynzy',
+    source='github',
     pnpmInstallArgs=[],
     setupPnpm=true,
     blobless=null,
@@ -217,9 +217,15 @@ local yarn = import 'yarn.jsonnet';
    *
    * @param {boolean} [isPr=true] - Whether this is a PR build (affects versioning)
    * @param {string} [ifClause=null] - Conditional expression to determine if step should run
+   * @param {string} [publishBranch=null] - The branch that triggers the publish-prod job; publishes the package <VERSION> specified in package.json and sets latest tag. When null, defaults to `main`/`master`
    * @returns {steps} - Array containing a single step object
    */
-  pnpmPublish(isPr=true, ifClause=null)::
+  pnpmPublish(isPr=true, ifClause=null, publishBranch=null)::
+    local branchCheck =
+      if publishBranch == null then
+        '( "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "master" )'
+      else
+        '"${GITHUB_REF_NAME}" == "' + publishBranch + '"';
     base.step(
       'publish',
       |||
@@ -240,7 +246,7 @@ local yarn = import 'yarn.jsonnet';
           echo "Setting tag/version for release/tag build.";
           PUBLISHVERSION=$VERSION;
           TAG="latest";
-        elif [[ "${GITHUB_REF_TYPE}" == "branch" && ( "${GITHUB_REF_NAME}" == "main" || "${GITHUB_REF_NAME}" == "master" ) ]] || [[ "${GITHUB_EVENT_NAME}" == "deployment" ]]; then
+        elif [[ "${GITHUB_REF_TYPE}" == "branch" && %s ]] || [[ "${GITHUB_EVENT_NAME}" == "deployment" ]]; then
           echo "Setting tag/version for release/tag build.";
           PUBLISHVERSION=$VERSION;
           TAG="latest";
@@ -253,7 +259,7 @@ local yarn = import 'yarn.jsonnet';
 
         mv package.json.bak package.json;
         ';
-      |||,
+      ||| % branchCheck,
       env={} + (if isPr then { PR_NUMBER: '${{ github.event.number }}' } else {}),
       ifClause=ifClause,
     ),
@@ -264,12 +270,13 @@ local yarn = import 'yarn.jsonnet';
    * @param {boolean} isPr - Whether this is a PR build (affects versioning)
    * @param {array} repositories - List of repository types ('gynzy' or 'github')
    * @param {string} [ifClause=null] - Conditional expression to determine if steps should run
+   * @param {string} [publishBranch=null] - The branch that triggers the publish-prod job; publishes the package <VERSION> specified in package.json and sets latest tag. When null, defaults to `main`/`master`
    * @returns {steps} - Array of step objects for publishing to all repositories
    */
-  pnpmPublishToRepositories(isPr, repositories, ifClause=null)::
+  pnpmPublishToRepositories(isPr, repositories, ifClause=null, publishBranch=null)::
     (std.flatMap(function(repository)
-                   if repository == 'gynzy' then [yarn.setGynzyNpmToken(ifClause=ifClause), self.pnpmPublish(isPr=isPr, ifClause=ifClause)]
-                   else if repository == 'github' then [yarn.setGithubNpmToken(ifClause=ifClause), self.pnpmPublish(isPr=isPr, ifClause=ifClause)]
+                   if repository == 'gynzy' then [yarn.setGynzyNpmToken(ifClause=ifClause), self.pnpmPublish(isPr=isPr, ifClause=ifClause, publishBranch=publishBranch)]
+                   else if repository == 'github' then [yarn.setGithubNpmToken(ifClause=ifClause, tokenSecret='GITHUB_TOKEN'), self.pnpmPublish(isPr=isPr, ifClause=ifClause, publishBranch=publishBranch)]
                    else error 'Unknown repository type given.',
                  repositories)),
 
@@ -281,7 +288,7 @@ local yarn = import 'yarn.jsonnet';
    * @param {string} [gitCloneRef='${{ github.event.pull_request.head.sha }}'] - Git reference to checkout
    * @param {array} [buildSteps=null] - Build steps; null defaults to `[pnpm run build]`. Pass `[]` to skip build.
    * @param {boolean} [checkVersionBump=true] - Whether to check if package version was bumped
-   * @param {array} [repositories=['gynzy']] - List of repositories to publish to
+   * @param {array} [repositories=['github']] - List of repositories to publish to
    * @param {boolean|string} [onChangedFiles=false] - Whether to only run on changed files (or glob pattern)
    * @param {string} [changedFilesHeadRef=null] - Head reference for changed files comparison
    * @param {string} [changedFilesBaseRef=null] - Base reference for changed files comparison
@@ -294,7 +301,7 @@ local yarn = import 'yarn.jsonnet';
     gitCloneRef='${{ github.event.pull_request.head.sha }}',
     buildSteps=null,
     checkVersionBump=true,
-    repositories=['gynzy'],
+    repositories=['github'],
     onChangedFiles=false,
     changedFilesHeadRef=null,
     changedFilesBaseRef=null,
@@ -327,12 +334,13 @@ local yarn = import 'yarn.jsonnet';
    * @param {boolean} [useCredentials=false] - Whether to use Docker registry credentials
    * @param {string} [gitCloneRef='${{ github.sha }}'] - Git reference to checkout
    * @param {array} [buildSteps=null] - Build steps; null defaults to `[pnpm run build]`. Pass `[]` to skip build.
-   * @param {array} [repositories=['gynzy']] - List of repositories to publish to
+   * @param {array} [repositories=['github']] - List of repositories to publish to
    * @param {boolean|string} [onChangedFiles=false] - Whether to only run on changed files (or glob pattern)
    * @param {string} [changedFilesHeadRef=null] - Head reference for changed files comparison
    * @param {string} [changedFilesBaseRef=null] - Base reference for changed files comparison
    * @param {string} [ifClause=null] - Conditional expression to determine if job should run
    * @param {string} [runsOn=null] - Runner type to use
+   * @param {string} [publishBranch=null] - The branch that triggers the publish-prod job; publishes the package <VERSION> specified in package.json and sets latest tag. When null, defaults to `main`/`master`
    * @returns {jobs} - GitHub Actions job definition
    */
   pnpmPublishJob(
@@ -340,12 +348,13 @@ local yarn = import 'yarn.jsonnet';
     useCredentials=false,
     gitCloneRef='${{ github.sha }}',
     buildSteps=null,
-    repositories=['gynzy'],
+    repositories=['github'],
     onChangedFiles=false,
     changedFilesHeadRef=null,
     changedFilesBaseRef=null,
     ifClause=null,
     runsOn=null,
+    publishBranch=null,
   )::
     local effectiveBuildSteps = if buildSteps == null then [base.step('build', 'pnpm run build')] else buildSteps;
     local stepIfClause = (if onChangedFiles != false then "steps.changes.outputs.package == 'true'" else null);
@@ -358,7 +367,7 @@ local yarn = import 'yarn.jsonnet';
       [self.checkoutAndPnpm(ref=gitCloneRef, fullClone=false, source=repositories[0], pnpmInstallArgs=['--frozen-lockfile'])] +
       (if onChangedFiles != false then misc.testForChangedFiles({ package: onChangedFiles }, headRef=changedFilesHeadRef, baseRef=changedFilesBaseRef) else []) +
       (if onChangedFiles != false then std.map(function(step) std.map(function(s) s { 'if': stepIfClause }, step), effectiveBuildSteps) else effectiveBuildSteps) +
-      self.pnpmPublishToRepositories(isPr=false, repositories=repositories, ifClause=stepIfClause),
+      self.pnpmPublishToRepositories(isPr=false, repositories=repositories, ifClause=stepIfClause, publishBranch=publishBranch),
       permissions={ packages: 'write', contents: 'read', 'pull-requests': 'read' },
       ifClause=ifClause,
     ),
