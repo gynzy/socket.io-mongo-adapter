@@ -1,6 +1,7 @@
 {
     "name": "@gynzy/mongo-adapter",
-    "version": "0.3.1-gynzy-1",
+    "version": "0.3.2",
+    "packageManager": "pnpm@10.33.4",
     "description": "The Socket.IO MongoDB adapter, allowing to broadcast events between several Socket.IO servers",
     "license": "MIT",
     "repository": {
@@ -13,14 +14,14 @@
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "scripts": {
-        "test": "npm run format:check && tsc && nyc mocha --require ts-node/register test/index.ts",
+        "test": "pnpm run format:check && tsc && nyc mocha --node-option=no-experimental-strip-types --require ts-node/register test/index.ts",
         "format:check": "prettier --parser typescript --check 'lib/**/*.ts' 'test/**/*.ts'",
         "format:fix": "prettier --parser typescript --write 'lib/**/*.ts' 'test/**/*.ts'",
         "build": "tsc"
     },
     "dependencies": {
         "debug": "~4.3.1",
-        "mongodb": "*"
+        "mongodb": "^6.0.0"
     },
     "peerDependencies": {
         "socket.io-adapter": "^2.5.2"
@@ -39,7 +40,7 @@
         "typescript": "^4.9.4"
     },
     "engines": {
-        "node": ">=10.0.0"
+        "node": ">=24"
     },
     "keywords": [
         "socket.io",

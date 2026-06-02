@@ -153,6 +153,9 @@ local pulumiDefaultEnvironment(stack) = {
    * @param {array} [additionalSetupSteps=[]] - Extra setup steps before Pulumi preview
    * @param {boolean} [ignoreEngines=false] - Whether to ignore Node.js engine requirements
    * @param {string} [runsOn=null] - GitHub Actions runner to use for the job
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {jobs} - Complete GitHub Actions job for Pulumi preview
    */
   pulumiPreviewJob(
@@ -289,6 +292,9 @@ local pulumiDefaultEnvironment(stack) = {
     packageManager='yarn',
     pnpmInstallArgs=[],
     runsOn=null,
+    blobless=null,
+    retryAttempts=null,
+    cloneTimeout=null,
   )::
     base.ghJob(
       'pulumi-preview',
@@ -297,8 +303,8 @@ local pulumiDefaultEnvironment(stack) = {
       useCredentials=false,
       steps=[
         (
-          if packageManager == 'yarn' then yarn.checkoutAndYarn(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, ignoreEngines=ignoreEngines)
-          else if packageManager == 'pnpm' then pnpm.checkoutAndPnpm(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, pnpmInstallArgs=pnpmInstallArgs)
+          if packageManager == 'yarn' then yarn.checkoutAndYarn(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, ignoreEngines=ignoreEngines, blobless=blobless, retryAttempts=retryAttempts, cloneTimeout=cloneTimeout)
+          else if packageManager == 'pnpm' then pnpm.checkoutAndPnpm(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, pnpmInstallArgs=pnpmInstallArgs, blobless=blobless, retryAttempts=retryAttempts, cloneTimeout=cloneTimeout)
         ),
         pulumiSetupSteps,
         additionalSetupSteps,
@@ -326,6 +332,9 @@ local pulumiDefaultEnvironment(stack) = {
    * @param {string} [packageManager='yarn'] - Package manager to use ('yarn' or 'pnpm')
    * @param {array} [pnpmInstallArgs=[]] - Additional arguments for pnpm install
    * @param {string} [runsOn=null] - GitHub Actions runner to use for the job
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {jobs} - GitHub Actions job for Pulumi deployment with failure notifications
    */
   pulumiDeployJob(
@@ -345,6 +354,9 @@ local pulumiDefaultEnvironment(stack) = {
     packageManager='yarn',
     pnpmInstallArgs=[],
     runsOn=null,
+    blobless=null,
+    retryAttempts=null,
+    cloneTimeout=null,
   )::
     base.ghJob(
       name=jobName,
@@ -354,8 +366,8 @@ local pulumiDefaultEnvironment(stack) = {
       useCredentials=false,
       steps=[
         (
-          if packageManager == 'yarn' then yarn.checkoutAndYarn(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, ignoreEngines=ignoreEngines)
-          else if packageManager == 'pnpm' then pnpm.checkoutAndPnpm(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, pnpmInstallArgs=pnpmInstallArgs)
+          if packageManager == 'yarn' then yarn.checkoutAndYarn(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, ignoreEngines=ignoreEngines, blobless=blobless, retryAttempts=retryAttempts, cloneTimeout=cloneTimeout)
+          else if packageManager == 'pnpm' then pnpm.checkoutAndPnpm(ref=gitCloneRef, cacheName=cacheName, fullClone=false, workingDirectory=yarnDir, source=yarnNpmSource, pnpmInstallArgs=pnpmInstallArgs, blobless=blobless, retryAttempts=retryAttempts, cloneTimeout=cloneTimeout)
         ),
         pulumiSetupSteps,
         additionalSetupSteps,
@@ -380,6 +392,9 @@ local pulumiDefaultEnvironment(stack) = {
    * @param {boolean} [ignoreEngines=false] - Whether to ignore Node.js engine requirements
    * @param {string} [packageManager='yarn'] - Package manager to use
    * @param {string} [runsOn=null] - GitHub Actions runner to use for the job
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {jobs} - GitHub Actions job for test environment deployment
    */
   pulumiDeployTestJob(
@@ -396,6 +411,9 @@ local pulumiDefaultEnvironment(stack) = {
     ignoreEngines=false,
     packageManager='yarn',
     runsOn=null,
+    blobless=null,
+    retryAttempts=null,
+    cloneTimeout=null,
   )::
     self.pulumiDeployJob(
       stack,
@@ -411,6 +429,9 @@ local pulumiDefaultEnvironment(stack) = {
       additionalSetupSteps=additionalSetupSteps,
       ignoreEngines=ignoreEngines,
       packageManager=packageManager,
+      blobless=blobless,
+      retryAttempts=retryAttempts,
+      cloneTimeout=cloneTimeout,
     ),
 
   /**
@@ -429,6 +450,9 @@ local pulumiDefaultEnvironment(stack) = {
    * @param {boolean} [ignoreEngines=false] - Whether to ignore Node.js engine requirements
    * @param {string} [packageManager='yarn'] - Package manager to use
    * @param {string} [runsOn=null] - GitHub Actions runner to use for the job
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {jobs} - GitHub Actions job for production deployment
    */
   pulumiDeployProdJob(
@@ -445,6 +469,9 @@ local pulumiDefaultEnvironment(stack) = {
     ignoreEngines=false,
     packageManager='yarn',
     runsOn=null,
+    blobless=null,
+    retryAttempts=null,
+    cloneTimeout=null,
   )::
     self.pulumiDeployJob(
       stack,
@@ -460,6 +487,9 @@ local pulumiDefaultEnvironment(stack) = {
       additionalSetupSteps=additionalSetupSteps,
       ignoreEngines=ignoreEngines,
       packageManager=packageManager,
+      blobless=blobless,
+      retryAttempts=retryAttempts,
+      cloneTimeout=cloneTimeout,
     ),
 
   /**
@@ -540,6 +570,9 @@ local pulumiDefaultEnvironment(stack) = {
    * @param {array} [additionalSetupSteps=[]] - Extra setup steps for all jobs
    * @param {boolean} [ignoreEngines=false] - Whether to ignore Node.js engine requirements
    * @param {string} [runsOn=null] - GitHub Actions runner to use for the jobs
+   * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
+   * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
+   * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {workflows} - Complete set of Pulumi preview and deployment pipelines
    */
   pulumiDefaultPipeline(
@@ -556,6 +589,9 @@ local pulumiDefaultEnvironment(stack) = {
     additionalSetupSteps=[],
     ignoreEngines=false,
     runsOn=null,
+    blobless=null,
+    retryAttempts=null,
+    cloneTimeout=null,
   )::
     base.pipeline(
       'pulumi-preview',
@@ -573,6 +609,9 @@ local pulumiDefaultEnvironment(stack) = {
           additionalSetupSteps=additionalSetupSteps,
           ignoreEngines=ignoreEngines,
           runsOn=runsOn,
+          blobless=blobless,
+          retryAttempts=retryAttempts,
+          cloneTimeout=cloneTimeout,
         ),
       ],
     ) +
@@ -591,6 +630,9 @@ local pulumiDefaultEnvironment(stack) = {
           ifClause=if deployTestWithProd then "${{ github.event.deployment.environment == 'test' || github.event.deployment.environment == 'prod' || github.event.deployment.environment == 'production' }}" else "${{ github.event.deployment.environment == 'test' }}",
           ignoreEngines=ignoreEngines,
           runsOn=runsOn,
+          blobless=blobless,
+          retryAttempts=retryAttempts,
+          cloneTimeout=cloneTimeout,
         ),
         self.pulumiDeployProdJob(
           pulumiDir=pulumiDir,
@@ -604,6 +646,9 @@ local pulumiDefaultEnvironment(stack) = {
           additionalSetupSteps=additionalSetupSteps,
           ignoreEngines=ignoreEngines,
           runsOn=runsOn,
+          blobless=blobless,
+          retryAttempts=retryAttempts,
+          cloneTimeout=cloneTimeout,
         ),
       ],
       event='deployment',
