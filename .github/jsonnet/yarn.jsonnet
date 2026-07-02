@@ -1,6 +1,7 @@
 local actions = import 'actions.jsonnet';
 local base = import 'base.jsonnet';
 local cache = import 'cache.jsonnet';
+local deployment = import 'deployment.jsonnet';
 local misc = import 'misc.jsonnet';
 
 {
@@ -143,7 +144,7 @@ local misc = import 'misc.jsonnet';
           runsOn=runsOn,
           image=image,
           useCredentials=useCredentials,
-          ifClause="${{ github.event.deployment.environment == 'production' || github.event.deployment.environment == 'prod' }}",
+          ifClause=deployment.deploymentTargets(['production']),
           steps=[
             misc.checkout() +
             self.setGynzyNpmToken() +

@@ -17,9 +17,11 @@ local images = import 'images.jsonnet';
    * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses default (false)
    * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses default (0)
    * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses default (10)
+   * @param {boolean} [skipSeed=false] - Boolean where the archive based git initialization can be skipped
    * @returns {steps} - GitHub Actions steps for repository checkout
    */
-  checkout(ifClause=null, fullClone=false, ref=null, preferSshClone=true, includeSubmodules=true, blobless=null, retryAttempts=null, cloneTimeout=null)::
+  checkout(ifClause=null, fullClone=false, ref=null, preferSshClone=true, includeSubmodules=true, blobless=null, retryAttempts=null, cloneTimeout=null, skipSeed=false)::
+    local secret = self.secret;
     local actualBlobless = if blobless == null then false else blobless;
     local actualRetryAttempts = if retryAttempts == null then 0 else retryAttempts;
     local actualCloneTimeout = if cloneTimeout == null then 10 else cloneTimeout;
@@ -73,6 +75,34 @@ local images = import 'images.jsonnet';
                           id='check-binaries',
                         ) else []);
 
+    // Cache seed: unpack the mirror archive (full working tree + .git) so the checkout
+    // below only fetches the delta. Skipped at runtime when the mirror secret is empty.
+    // Any failure leaves a clean workspace and continues normally.
+    local seedSteps = (if skipSeed then [] else base.step(
+      'fetch git-mirror archive',
+      |||
+        seed() {
+          if ! command -v zstd >/dev/null 2>&1; then
+            if command -v apk >/dev/null 2>&1; then apk add --no-cache zstd tar wget || return 1;
+            elif command -v apt >/dev/null 2>&1; then apt update && apt install -y zstd tar wget || return 1;
+            else return 1; fi
+          fi
+          wget -q -O - "$GIT_HTTPS_ARCHIVE_MIRROR" | tar -C "$GITHUB_WORKSPACE" --extract --zstd -f - || return 1
+        }
+        if ! seed; then
+          echo "git-mirror seed failed; continuing with a clean checkout"
+          find "$GITHUB_WORKSPACE" -mindepth 1 -delete 2>/dev/null || true
+          exit 1
+        fi
+        echo "git-mirror seed succeeded"
+        exit 0
+      |||,
+      env={ GIT_HTTPS_ARCHIVE_MIRROR: secret('GIT_HTTPS_ARCHIVE_MIRROR') },
+      ifClause="${{ env.GIT_HTTPS_ARCHIVE_MIRROR != '' }}",
+      shell='bash',
+      continueOnError=true,
+    ));
+
     // strip the ${{ }} from the IfClause so we can inject and add our own if clause
     local localIfClause = (if ifClause == null then null else std.strReplace(std.strReplace(ifClause, '${{ ', ''), ' }}', ''));
     local userIfPart = if ifClause == null then '' else '( ' + localIfClause + ' ) && ';
@@ -97,6 +127,7 @@ local images = import 'images.jsonnet';
     );
 
     if (preferSshClone) then
+      seedSteps +
       sshSteps +
       retrySteps(
         'Check out repository code via ssh',
@@ -112,6 +143,7 @@ local images = import 'images.jsonnet';
       ) +
       base.step('git safe directory', "command -v git && git config --global --add safe.directory '*' || true")
     else
+      seedSteps +
       self.checkoutWithoutSshMagic(ifClause, fullClone, ref),
 
   /**
