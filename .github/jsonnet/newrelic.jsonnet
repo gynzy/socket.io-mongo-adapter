@@ -1,4 +1,5 @@
 local base = import 'base.jsonnet';
+local deployment = import 'deployment.jsonnet';
 local images = import 'images.jsonnet';
 local misc = import 'misc.jsonnet';
 local yarn = import 'yarn.jsonnet';
@@ -31,7 +32,7 @@ local pnpm = import 'pnpm.jsonnet';
       runsOn=runsOn,
       image=image,
       useCredentials=useCredentials,
-      ifClause="${{ github.event.deployment.environment == 'production' }}",
+      ifClause=deployment.deploymentTargets(['production']),
       steps=
         (
           if packageManager == 'yarn' then 

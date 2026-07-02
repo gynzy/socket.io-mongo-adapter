@@ -1,6 +1,7 @@
 local actions = import 'actions.jsonnet';
 local base = import 'base.jsonnet';
 local cache = import 'cache.jsonnet';
+local deployment = import 'deployment.jsonnet';
 local misc = import 'misc.jsonnet';
 local yarn = import 'yarn.jsonnet';
 
@@ -144,7 +145,7 @@ local yarn = import 'yarn.jsonnet';
           runsOn=runsOn,
           image=image,
           useCredentials=useCredentials,
-          ifClause="${{ github.event.deployment.environment == 'production' || github.event.deployment.environment == 'prod' }}",
+          ifClause=deployment.deploymentTargets(['production']),
           steps=[
             self.checkoutAndPnpm(
               cacheName=null,  // to populate cache we want a clean install
@@ -182,12 +183,13 @@ local yarn = import 'yarn.jsonnet';
    * @param {array} [pnpmInstallArgs=[]] - Additional arguments for pnpm install
    * @param {string} [auditLevel='moderate'] - Minimum severity level to fail the job ('low', 'moderate', 'high', 'critical')
    * @param {string} [runsOn=null] - GitHub Actions runner to use for the job
+   * @param {string} [source='github'] - Where to install @gynzy packages from ('github', 'gynzy')
    * @param {boolean} [blobless=null] - Whether to perform a blobless clone (--filter=blob:none); null uses checkout default
    * @param {number} [retryAttempts=null] - Number of additional checkout attempts on failure; null uses checkout default
    * @param {number} [cloneTimeout=null] - Timeout for git clone operation in minutes; null uses checkout default
    * @returns {workflows} - Complete GitHub Actions pipeline configuration
    */
-  pnpmAuditPipeline(cacheName=null, image=null, setupPnpm=true, pnpmInstallArgs=[], auditLevel='moderate', runsOn=null, blobless=null, retryAttempts=null, cloneTimeout=null)::
+  pnpmAuditPipeline(cacheName=null, image=null, setupPnpm=true, pnpmInstallArgs=[], auditLevel='moderate', runsOn=null, source=null, blobless=null, retryAttempts=null, cloneTimeout=null)::
     base.pipeline(
       'pnpm-audit',
       [
@@ -201,6 +203,7 @@ local yarn = import 'yarn.jsonnet';
               ref='${{ github.event.pull_request.head.sha }}',
               setupPnpm=setupPnpm,
               pnpmInstallArgs=pnpmInstallArgs,
+              source=source,
               blobless=blobless,
               retryAttempts=retryAttempts,
               cloneTimeout=cloneTimeout,
