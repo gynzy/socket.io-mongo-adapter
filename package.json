@@ -1,6 +1,6 @@
 {
     "name": "@gynzy/mongo-adapter",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "packageManager": "pnpm@11.13.0",
     "description": "The Socket.IO MongoDB adapter, allowing to broadcast events between several Socket.IO servers",
     "license": "MIT",
