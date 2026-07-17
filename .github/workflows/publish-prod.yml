@@ -75,7 +75,7 @@
       "if": "${{ ( steps.check-binaries.outputs.sshBinaryExists == 'true' && steps.check-binaries.outputs.gitBinaryExists == 'true' ) }}"
       "name": "Check out repository code via ssh"
       "timeout-minutes": 10
-      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+      "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
       "with":
         "ref": "${{ github.sha }}"
         "ssh-key": "${{ secrets.VIRKO_GITHUB_SSH_KEY }}"
@@ -84,7 +84,7 @@
       "if": "${{ ( steps.check-binaries.outputs.sshBinaryExists == 'false' || steps.check-binaries.outputs.gitBinaryExists == 'false' ) }}"
       "name": "Check out repository code via https"
       "timeout-minutes": 10
-      "uses": "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd"
+      "uses": "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
       "with":
         "ref": "${{ github.sha }}"
         "submodules": "recursive"
@@ -97,10 +97,9 @@
         cat <<EOF > .npmrc
         @gynzy:registry=https://npm.pkg.github.com
         //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
-        public-hoist-pattern[]=@pulumi/pulumi
         EOF
     - "name": "Install pnpm tool"
-      "uses": "pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320"
+      "uses": "pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271"
     - "name": "Run pnpm install"
       "run": "pnpm config set store-dir .pnpm-store && pnpm install --frozen-lockfile"
     - "name": "build"
@@ -112,7 +111,6 @@
         cat <<EOF > .npmrc
         @gynzy:registry=https://npm.pkg.github.com
         //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
-        public-hoist-pattern[]=@pulumi/pulumi
         EOF
     - "env": {}
       "name": "publish"
